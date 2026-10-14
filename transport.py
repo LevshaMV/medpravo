@@ -43,6 +43,13 @@ def pace(host):
         HOST_NEXT[host]=time.monotonic()+wait+0.6
     if wait:time.sleep(wait)
 
+def relay_url(value):
+    if not value:return None
+    url=urllib.parse.urlsplit(value)
+    if url.scheme!='http' or url.hostname!='127.0.0.1' or url.username or url.password or url.path not in ('','/') or url.query or url.fragment or not url.port or not 1024<=url.port<=65535:
+        raise ValueError('Релей допускается только через локальный SSH-туннель')
+    return value
+
 def trim_cache(con,max_bytes=CACHE_BYTES,at=None):
     at=time.time() if at is None else at
     con.execute('DELETE FROM http_cache WHERE fetched<?',(at-CACHE_AGE,))
@@ -71,7 +78,11 @@ def fetch(url,source,root,connection,permitted,canonical,redirect,payload=None):
     if data is not None:headers['Content-Type']='application/json; charset=utf-8'
     tls=context(source,root)
     interface=int(os.environ.get('DIRECT_INTERFACE','0'))
-    if interface and os.name=='nt':
+    proxy=relay_url(os.environ.get('MEDPRAVO_HTTPS_PROXY',''))
+    if proxy:
+        # Certificate checks and source redirect restrictions remain active.
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({'https':proxy,'http':''}),redirect(source),urllib.request.HTTPSHandler(context=tls))
+    elif interface and os.name=='nt':
         class DirectHTTPSHandler(urllib.request.HTTPSHandler):
             def https_open(self,request):
                 return self.do_open(functools.partial(network.DirectHTTPSConnection,interface_index=interface),request,context=tls)

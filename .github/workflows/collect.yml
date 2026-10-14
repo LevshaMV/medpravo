@@ -33,12 +33,24 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_*.py'
           node tests/test_github_client.js
+          python -m py_compile github_relay.py russian_proxy.py
+          bash -n deploy/install_relay.sh
       - name: Восстановить историю
         run: python github_state.py restore
+      - name: Подключить российское соединение, если настроено
+        id: relay
+        if: ${{ vars.MEDPRAVO_RELAY_HOST != '' && inputs.publish_only != true }}
+        env:
+          RELAY_HOST: ${{ vars.MEDPRAVO_RELAY_HOST }}
+          RELAY_PRIVATE_KEY: ${{ secrets.MEDPRAVO_RELAY_KEY }}
+          RELAY_KNOWN_HOSTS: ${{ secrets.MEDPRAVO_RELAY_KNOWN_HOSTS }}
+        run: python github_relay.py start
       - name: Проверить источники и подготовить ленту
         env:
           FETCH_TIMEOUT: '12'
           EXPORT_ONLY: ${{ inputs.publish_only }}
+          MEDPRAVO_HTTPS_PROXY: ${{ steps.relay.outputs.proxy_url }}
+          MEDPRAVO_NETWORK_ORIGIN: ${{ steps.relay.outputs.proxy_url != '' && 'GitHub Actions через российский SSH-релей' || 'GitHub Actions' }}
         run: |
           if [ "$EXPORT_ONLY" = "true" ]; then
             python github_collect.py --export-only
@@ -52,6 +64,9 @@ jobs:
         with:
           path: site
           retention-days: 1
+      - name: Закрыть временное российское соединение
+        if: ${{ always() && vars.MEDPRAVO_RELAY_HOST != '' && inputs.publish_only != true }}
+        run: python github_relay.py stop
   publish:
     needs: collect
     runs-on: ubuntu-latest
