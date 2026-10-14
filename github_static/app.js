@@ -11,6 +11,10 @@ async function refresh(){try{current=await api("state");render();}catch(e){messa
 function render(){
  if(!current)return;
  const enabled=current.sources.filter(s=>current.settings.enabled_sources.includes(s.id));
+ const failed=enabled.filter(s=>['blocked','needs_adapter'].includes(s.status));
+ let coverage=document.getElementById('coverage-warning');
+ if(!coverage){coverage=document.createElement('div');coverage.id='coverage-warning';coverage.setAttribute('role','status');$('stats').insertAdjacentElement('afterend',coverage);}
+ coverage.innerHTML=failed.length?'<div class="alert error">Не удалось проверить '+failed.length+' источников: '+failed.map(s=>escape(s.name)).join(', ')+'. Сохранённые документы доступны, но новые публикации этих источников могут отсутствовать. Подробности — во вкладке «Источники».</div>':'';
  if(current.local_test){document.querySelector('.sidebar-bottom strong').textContent='Локальная проверка';document.querySelector('.sidebar-bottom small').textContent='Автоматический сбор выключен';}
  const successful=enabled.filter(s=>["collected","partial"].includes(s.status)).length;
  $("stats").innerHTML=[["Публикаций в базе",current.count],["Не просмотрено",current.unread],["Каталоги отвечают",successful+" / "+enabled.length],["Автоматическая проверка","Каждые 6 ч"]].map(([label,value])=>'<div class="stat"><div class="stat-top">'+escape(label)+'</div><strong>'+escape(value)+'</strong></div>').join("");

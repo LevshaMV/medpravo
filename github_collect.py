@@ -97,13 +97,13 @@ def archive_files(pubs,persist,site,budget=90):
     write_json(path,manifest)
     return {'files':len(manifest),'bytes':total,'errors':errors}
 
-def export_site(site,repository='',archive=True,persist=None):
+def export_site(site,repository='',archive=True,persist=None,archive_budget=90):
     site.mkdir(parents=True,exist_ok=True)
     for p in (ROOT/'github_static').iterdir():
         if p.is_file():shutil.copyfile(p,site/p.name)
     (site/'.nojekyll').write_text('',encoding='utf-8')
     pubs=publications()
-    archive_report=archive_files(pubs,persist,site) if archive else {'files':0,'bytes':0,'errors':[]}
+    archive_report=archive_files(pubs,persist,site,budget=archive_budget) if archive else {'files':0,'bytes':0,'errors':[]}
     state=m.app_state()
     with m.connection() as con:
         last=con.execute('SELECT finished_at FROM runs WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1').fetchone()
@@ -172,7 +172,7 @@ def main():
             result=m.scan()
             if result.get('error'):raise RuntimeError(result['error'])
         finally:m.catalog=original
-    data=export_site(args.site_dir,os.environ.get('GITHUB_REPOSITORY',''),not args.export_only,persist)
+    data=export_site(args.site_dir,os.environ.get('GITHUB_REPOSITORY',''),True,persist,0 if args.export_only else 90)
     compact_state(persist)
     successful=sum(s['status'] in ('collected','partial') for s in data['sources'] if s['id'] in data['settings']['enabled_sources'])
     print(json.dumps({'records':len(data['publications']),'catalogs_responding':successful,'enabled':len(data['settings']['enabled_sources']),'archive_files':data['archive']['files'],'checked_at':data['last_checked_at']},ensure_ascii=False),flush=True)

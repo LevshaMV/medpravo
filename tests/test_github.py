@@ -86,4 +86,16 @@ class GitHubTests(unittest.TestCase):
             self.assertEqual(names.strip(),'state.sqlite.gz')
         finally:os.chdir(original)
 
+    def test_republish_reuses_files_without_contacting_source(self):
+        source=next(s for s in c.m.catalog() if s['id']=='tfoms')
+        doc={**self.doc,'url':'https://oms-kaluga.ru/files/reuse.pdf','title':'Тарифное соглашение ОМС.pdf'}
+        c.m.store_publication(source,doc,{'type':'binary','raw':b'%PDF-reuse'},True)
+        persist=self.root/'persist';site=self.root/'site';site.mkdir()
+        with patch.object(c.m,'fetch',return_value={'type':'binary','raw':b'%PDF-reuse'}):c.archive_files(c.publications(),persist,site)
+        with patch.object(c.m,'fetch',side_effect=AssertionError('No network on republish')):
+            data=c.export_site(self.root/'republished','LevshaMV/medpravo',True,persist,archive_budget=0)
+        self.assertEqual(data['archive']['files'],1)
+        copied=next(p for p in data['publications'] if p['source_id']=='tfoms')
+        self.assertEqual((self.root/'republished'/copied['download_path']).read_bytes(),b'%PDF-reuse')
+
 if __name__=='__main__':unittest.main()

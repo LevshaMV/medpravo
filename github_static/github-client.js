@@ -6,7 +6,7 @@ function createGitHubClient(href,fetchImpl,storage){
  const safeURL=value=>{try{const u=new URL(value);return ['https:','http:'].includes(u.protocol)&&!u.username&&!u.password;}catch{return false;}};
  const safePath=value=>/^files\/[0-9a-f]{64}\.(pdf|zip|rar|7z|doc|docx|xls|xlsx|rtf)$/.test(value||'');
  async function load(){
-  const response=await fetchImpl(new URL('data.json',base),{cache:'no-store'});
+  const response=await fetchImpl(new URL('data.json',base),{cache:'no-cache'});
   if(!response.ok)throw Error('Не удалось загрузить ленту: '+response.status);
   const data=await response.json();
   if(data.schema!==1||!Array.isArray(data.publications)||!Array.isArray(data.sources))throw Error('Некорректный формат ленты');

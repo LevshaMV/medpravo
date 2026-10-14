@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: '17 */6 * * *'
   workflow_dispatch:
+    inputs:
+      publish_only:
+        description: 'Только переопубликовать сохранённую ленту (без сбора)'
+        type: boolean
+        default: false
 
 concurrency:
   group: medpravo-collection
@@ -33,7 +38,13 @@ jobs:
       - name: Проверить источники и подготовить ленту
         env:
           FETCH_TIMEOUT: '12'
-        run: python github_collect.py
+          EXPORT_ONLY: ${{ inputs.publish_only }}
+        run: |
+          if [ "$EXPORT_ONLY" = "true" ]; then
+            python github_collect.py --export-only
+          else
+            python github_collect.py
+          fi
       - name: Сохранить историю для следующего запуска
         run: python github_state.py save
       - name: Подготовить сайт к публикации
