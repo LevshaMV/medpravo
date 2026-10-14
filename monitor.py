@@ -7,6 +7,7 @@ import collector
 import adapters
 import transport
 import titles
+import relevance as scope
 import downloads
 import concurrent.futures
 import contextlib
@@ -106,6 +107,7 @@ class PageParser(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.skip = 0
+        self.element_stack = []
         self.blocks = []
         self.links = []
         self.anchor = None
@@ -114,10 +116,14 @@ class PageParser(HTMLParser):
         self.timestamps = []
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        if tag in ("script", "style", "nav", "header", "footer", "aside"):
+        pagination=re.search(r'pagination|pager|page-navigation|постранич|страниц',attrs.get('class','')+' '+attrs.get('aria-label',''),re.I)
+        ignored=(tag in ("script", "style", "header", "footer", "aside") or tag=='nav' and not pagination or attrs.get('role') in ('banner','contentinfo') or re.search(r'(?:^|\s)(?:footer\S*|site-footer|b-footer|main-nav|site-header)(?:\s|$)',attrs.get('class',''),re.I))
+        if tag not in ('area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'):
+            self.element_stack.append((tag,bool(ignored)))
+        if ignored:
             self.skip += 1
         if tag == "a":
-            self.anchor = {"href":attrs.get("href",""), "parts":[], "label":attrs.get("title","")}
+            self.anchor = {"href":attrs.get("href",""), "parts":[], "label":attrs.get("title",""), "ignored":bool(self.skip)}
         if tag == "title":
             self.title = True
         if tag == "time" and attrs.get("datetime") and attrs.get("itemprop")=="datePublished":
@@ -125,11 +131,14 @@ class PageParser(HTMLParser):
         if tag == "meta" and attrs.get("property","").lower() == "article:published_time":
             self.timestamps.append(attrs.get("content",""))
     def handle_endtag(self, tag):
-        if tag in ("script", "style", "nav", "header", "footer", "aside"):
-            self.skip = max(0, self.skip - 1)
         if tag == "a" and self.anchor:
-            self.links.append((self.anchor["href"], " ".join(self.anchor["parts"]).strip() or self.anchor["label"]))
+            if not self.anchor['ignored']:self.links.append((self.anchor["href"], " ".join(self.anchor["parts"]).strip() or self.anchor["label"]))
             self.anchor = None
+        for i in range(len(self.element_stack)-1,-1,-1):
+            if self.element_stack[i][0]==tag:
+                self.skip=max(0,self.skip-sum(ignored for _,ignored in self.element_stack[i:]))
+                del self.element_stack[i:]
+                break
         if tag == "title":
             self.title = False
     def handle_data(self, data):
@@ -261,12 +270,15 @@ def initialize():
 def separate_reference_pages():
     """Keep old records and read flags, but do not present catalogues as individual acts."""
     with connection() as con:
-        if con.execute('SELECT 1 FROM title_migrations WHERE version=3').fetchone():return
-        for row in con.execute("SELECT url,source_id FROM publications WHERE source_id IN ('duma','rkn')").fetchall():
+        if con.execute('SELECT count(*) FROM title_migrations WHERE version IN (3,4)').fetchone()[0]==2:return
+        for row in con.execute("SELECT url,source_id FROM publications WHERE source_id IN ('duma','rkn','roszdrav','devices')").fetchall():
             path=urllib.parse.urlsplit(row['url']).path
             reference=(row['source_id']=='duma' and not re.fullmatch(r'/bill/\d+-\d+/?',path)) or (row['source_id']=='rkn' and path.startswith(('/activity/connection/','/activity/mass-media/')))
+            # Verified website privacy policy, linked from the Roszdrav footer.
+            reference=reference or (row['source_id'] in ('roszdrav','devices') and path=='/i/upload/images/2025/5/6/1746514411.03751-1-982307.pdf')
             if reference:con.execute("UPDATE publications SET category='Справочная страница',relevance='other',topics='[]' WHERE url=?",(row['url'],))
-        con.execute('INSERT INTO title_migrations VALUES (3)')
+        con.execute('INSERT OR IGNORE INTO title_migrations VALUES (3)')
+        con.execute('INSERT OR IGNORE INTO title_migrations VALUES (4)')
 
 def remember_source_page(con,candidate,source):
     page=candidate.get('source_page')
@@ -328,11 +340,8 @@ def refresh_cached_titles():
         con.execute('INSERT INTO title_migrations VALUES (1)')
 
 def classify(title, text, source):
-    material = title + " " + text
-    topics = [name for name, pattern in TOPICS.items() if re.search(pattern, material, re.I)]
-    if source['id'] in ('tfoms','ffoms') and 'ОМС' not in topics:
-        topics.append('ОМС')
-    relevance = "medical" if topics else ("review" if not text or source.get("medical") else "other")
+    evaluation=scope.evaluate(title,text,source)
+    relevance,topics=evaluation['relevance'],evaluation['topics']
     category = source.get("kind", "Документ")
     if re.search(r"проект|законопроект", title, re.I):
         category = "Проект"

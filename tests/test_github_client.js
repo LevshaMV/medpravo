@@ -22,6 +22,12 @@ async function main(){
  await assert.rejects(client('settings',{}),/GitHub Actions/);
  const blocked=createGitHubClient('https://example.org/test/',fetch,{getItem:()=>null,setItem:()=>{throw Error('blocked');}});
  await blocked('state');await assert.rejects(blocked('review',{url:'https://example.org/0',reviewed:true}),/не разрешает/);
+ data.publications.push({url:'https://example.org/unclear',title:'Приказ № 12',relevance:'review',source_id:'a',topics:[]});
+ data.publications.push({url:'https://example.org/schools',title:'О строительстве школ',relevance:'other',source_id:'a',topics:[]});
+ const filtered=await client('state');assert.equal(filtered.count,57);assert.equal(filtered.medical_count,55);assert.equal(filtered.unread,55);
+ assert.equal((await client('publications?relevance=medical')).total,55);
+ assert.equal((await client('publications?relevance=review')).total,1);
+ assert.equal((await client('publications?relevance=other')).total,1);
  console.log('GitHub client checks passed: filtering, paging, read flags, relative paths, unsafe links, storage failure');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

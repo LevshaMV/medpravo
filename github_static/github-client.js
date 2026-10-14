@@ -18,7 +18,7 @@ function createGitHubClient(href,fetchImpl,storage){
  const flagged=p=>Boolean(read[p.url]);
  const api=async(path,body)=>{
   if(path==='state'){
-   const data=await load();return {...data,count:data.publications.length,unread:data.publications.filter(p=>!flagged(p)&&['medical','review'].includes(p.relevance)).length};
+   const data=await load();return {...data,count:data.publications.length,medical_count:data.publications.filter(p=>p.relevance==='medical').length,unread:data.publications.filter(p=>!flagged(p)&&p.relevance==='medical').length};
   }
   if(!snapshot)await load();
   if(path==='review'){

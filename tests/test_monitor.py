@@ -37,6 +37,12 @@ class FeedTests(unittest.TestCase):
         self.assertEqual(result['total'],1)
         self.assertEqual(result['publications'][0]['initial'],1)
         self.assertEqual(result['publications'][0]['published_at'],'2026-10-14')
+    def test_layout_links_are_excluded_but_pagination_and_body_survive(self):
+        html='<header><a href="/documents/menu.pdf">Закон о медицине</a></header><div class="footer"><div><a href="/policy.pdf">О персональных данных</a></div></div><main><a href="/documents/real.pdf">Приказ о медицинской помощи</a></main><nav class="pagination"><a href="?page=2">2</a></nav>'
+        found,pages=monitor.discover(html,'https://minzdrav.gov.ru/documents',self.source)
+        self.assertEqual([p['url'] for p in found],['https://minzdrav.gov.ru/documents/real.pdf'])
+        self.assertEqual(pages,['https://minzdrav.gov.ru/documents?page=2'])
+        self.assertNotIn('персональных',monitor.parse_page(html).visible)
     def test_known_document_never_becomes_change_event(self):
         monitor.store_publication(self.source,self.candidate,self.content('Прежний текст'),False)
         self.assertFalse(monitor.store_publication(self.source,self.candidate,self.content('Другой текст'),False))

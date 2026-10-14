@@ -48,6 +48,15 @@ class GitHubTests(unittest.TestCase):
     def test_corrupt_state_does_not_silently_reset_history(self):
         persist=self.root/'persist';persist.mkdir();(persist/'state.sqlite.gz').write_bytes(gzip.compress(b'not sqlite'))
         with self.assertRaises(ValueError):c.restore_state(persist,self.root/'new')
+    def test_export_rechecks_old_noise_without_rewriting_history(self):
+        title='Приказ Министерства здравоохранения об утверждении плана научно-практических конференций'
+        with c.m.connection() as con:
+            con.execute('UPDATE publications SET title=?,relevance=?,topics=?,reviewed=1',(title,'medical','["Работа центра"]'))
+            before=tuple(con.execute('SELECT url,first_seen,published_at,initial,reviewed FROM publications').fetchone())
+        pub=c.publications()[0]
+        self.assertEqual(pub['relevance'],'other')
+        self.assertIn('ведомства',pub['relevance_reason'])
+        with c.m.connection() as con:self.assertEqual(tuple(con.execute('SELECT url,first_seen,published_at,initial,reviewed FROM publications').fetchone()),before)
     def test_file_archive_reuses_verified_copy_and_never_emits_html(self):
         source=next(s for s in c.m.catalog() if s['id']=='tfoms')
         doc={**self.doc,'url':'https://oms-kaluga.ru/files/test.pdf','title':'Тарифное соглашение ОМС.pdf'}

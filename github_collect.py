@@ -13,6 +13,7 @@ import time
 import urllib.parse
 import monitor as m
 import downloads
+import relevance as scope
 
 ROOT=Path(__file__).resolve().parent
 MAX_ARCHIVE=60*1024*1024
@@ -56,6 +57,9 @@ def publications():
         # Export an explicit list of fields; future DB columns cannot leak into Pages.
         item={k:p[k] for k in ('url','title','source_id','published_at','first_seen','initial','relevance','category','original_title')}
         item['topics']=json.loads(p['topics']);item['reviewed']=False
+        evaluation=scope.evaluate(p['title'],'',source)
+        if p['category']=='Справочная страница':evaluation={'relevance':'other','topics':[],'reason':'Справочная страница, а не отдельный акт'}
+        item['relevance']=evaluation['relevance'];item['topics']=evaluation['topics'];item['relevance_reason']=evaluation['reason']
         item['source_ids']=assoc.get(p['url'],[p['source_id']])
         item['source_page']=p['source_page'] if p['source_page'] and m.permitted(p['source_page'],source) else None
         ext=Path(urllib.parse.urlsplit(p['url']).path).suffix.lower()
@@ -115,6 +119,7 @@ def export_site(site,repository='',archive=True,persist=None,archive_budget=90):
           'repository':repository,'workflow_url':'https://github.com/'+repository+'/actions/workflows/collect.yml' if re.fullmatch(r'[\w.-]+/[\w.-]+',repository) else None,
           'sources':sources,'settings':state['settings'],'topics':state['topics'],'publications':pubs,
           'archive':archive_report,'schedule':{'enabled':True,'interval_hours':6},'scanning':False,'local_test':False}
+    data['profile']=scope.PROFILE
     write_json(site/'data.json',data)
     write_json(site/'source-check.json',{'checked_at':data['last_checked_at'],'sources':sources,'archive':archive_report})
     return data
