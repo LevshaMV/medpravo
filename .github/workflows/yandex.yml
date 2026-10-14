@@ -19,6 +19,7 @@ jobs:
           sudo gpg --dearmor --output /usr/share/keyrings/yandex-browser.gpg /tmp/yandex-browser-key.gpg
           echo 'deb [signed-by=/usr/share/keyrings/yandex-browser.gpg] https://repo.yandex.ru/yandex-browser/deb stable main' | sudo tee /etc/apt/sources.list.d/yandex-browser.list
           sudo apt-get update
-          sudo apt-get install -y yandex-browser-stable
+          sudo apt-get install -y yandex-browser-stable xvfb
+          python -m pip install playwright==1.64.0
       - name: Проверить каталоги через настоящий Яндекс Браузер
-        run: python yandex_probe.py
+        run: xvfb-run -a python yandex_probe.py
