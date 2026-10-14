@@ -1,0 +1,24 @@
+name: МедПраво — проверка через Яндекс
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  yandex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Установить браузер из официального подписанного репозитория Яндекса
+        run: |
+          curl --fail --show-error --silent --max-time 60 https://repo.yandex.ru/yandex-browser/YANDEX-BROWSER-KEY.GPG -o /tmp/yandex-browser-key.gpg
+          sudo gpg --dearmor --output /usr/share/keyrings/yandex-browser.gpg /tmp/yandex-browser-key.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/yandex-browser.gpg] https://repo.yandex.ru/yandex-browser/deb stable main' | sudo tee /etc/apt/sources.list.d/yandex-browser.list
+          sudo apt-get update
+          sudo apt-get install -y yandex-browser-stable
+      - name: Проверить каталоги через настоящий Яндекс Браузер
+        run: python yandex_probe.py
