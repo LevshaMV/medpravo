@@ -23,6 +23,13 @@ class CollectorTests(unittest.TestCase):
         with patch.object(monitor,'fetch',side_effect=[self.content(''),self.content()]):result=monitor.scan_source(self.source)
         self.assertEqual(result['added'],1)
         self.assertEqual(result['pending'],0)
+    def test_explicit_unrelated_acts_are_not_downloaded_but_unclear_are_retained(self):
+        listing=self.content('<a href="/documents/schools.pdf">Постановление о строительстве школ</a><a href="/documents/unknown.pdf">Приказ № 25 от 14.10.2026</a>')
+        with patch.object(monitor,'fetch',side_effect=[listing,{'type':'binary','raw':b'%PDF-qa'}]) as fetch:result=monitor.scan_source(self.source)
+        self.assertEqual(fetch.call_count,2)
+        self.assertTrue(fetch.call_args_list[-1].args[0].endswith('/unknown.pdf'))
+        self.assertEqual(result['added'],1)
+        self.assertEqual(monitor.list_publications({})['publications'][0]['relevance'],'review')
     def test_next_page_is_resumed_on_next_run(self):
         source={**self.source,'page_limit':1}
         page1=self.content('<a href="?page=2">Следующая</a>')

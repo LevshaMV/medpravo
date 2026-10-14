@@ -30,16 +30,21 @@ UNCONFIRMED_CLINICAL=r'век\b|конъюнктив|ретинопат|маку
 
 def matches(pattern,text):return bool(re.search(pattern,text,re.I))
 
+def should_fetch(title,source):
+    """Reject explicit unrelated subjects before downloading; keep unclear acts."""
+    evaluation=evaluate(title,'',source)
+    return evaluation['relevance']!='other' or evaluation['reason']=='Связь с профилем центра по предмету документа не установлена'
+
 def evaluate(title,text,source):
     title=' '.join((title or '').split())
     sid=source['id']
     def result(scope,topics,reason):return {'relevance':scope,'topics':topics,'reason':reason,'version':VERSION}
-    if matches(INTERNAL,title):return result('other',[],'Внутренние правила государственного органа, а не требования к медицинскому центру')
+    if matches(INTERNAL,title) or matches(r'главн\w*\s+администратор\w*\s+(?:доход|источник\w*\s+финансирован)|численност\w*\s+застрахован\w*.{0,100}цел\w*\s+формирован\w*\s+бюджет',title):return result('other',[],'Внутренние правила государственного органа, а не требования к медицинскому центру')
     if matches(ADMIN,title) or matches(r'санитарн\w*\s+охран\w*\s+курорт\w*.{0,80}(?:анап|сочи)',title):return result('other',[],'Организация работы ведомства или мероприятие вне задач центра')
     if matches(REFERENCE,title):return result('other',[],'Справочный сервис, а не отдельный нормативный документ')
     if matches(OTHER_REGIONS,title) and matches(TARGETED,title) and not matches(r'Калуг|все\w*\s+регион',title):
         return result('other',[],'Адресное решение для другого региона')
-    if matches(r'передвижн\w*\s+аптек|стоматолог|зубн\w*\s+протез|ветеринар',title):
+    if matches(r'передвижн\w*\s+аптек|стоматолог|одонтоген|челюст|\bзуб(?:ов|а|ы|е|у|ам|ами|н\w*)\b|ветеринар',title):
         return result('other',[],'Направление не подтверждено в профиле центра')
     if matches(OFF_TOPIC,title):return result('other',[],'Предмет документа не относится к подтверждённым задачам центра')
     if matches(r'лицензиру\w*\s+вид\w*\s+деятельност\w*\s+в\s+област\w*\s+пожарн',title):return result('other',[],'Обучение работников специализированных организаций с пожарной лицензией')
@@ -50,7 +55,7 @@ def evaluate(title,text,source):
     subject=re.sub(ISSUER,' ',title,flags=re.I)
     topics=[name for name,pattern in RULES.items() if matches(pattern,subject)]
     if sid=='clinrec':
-        if matches(UNCONFIRMED_CLINICAL,title):return result('review',[],'Клиническая рекомендация по специальности, не подтверждённой у центра')
+        if matches(UNCONFIRMED_CLINICAL,title) or matches(r'новорожд[её]н|неонат',title):return result('review',[],'Клиническая рекомендация по специальности, не подтверждённой у центра')
         if matches(CLINICAL,subject):return result('medical',list(dict.fromkeys(topics+['Работа центра'])),'Клиническая рекомендация по диагностике или специальностям центра')
         return result('review',[],'Профиль клинической рекомендации не подтверждён по названию')
     # Children alone are not medical evidence: school/sport/benefit acts never qualify.

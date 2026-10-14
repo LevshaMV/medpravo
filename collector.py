@@ -5,6 +5,8 @@ import re
 from types import SimpleNamespace
 import urllib.parse
 import adapters
+import relevance
+import os
 
 def scan_source(namespace,source):
     m=SimpleNamespace(**namespace)
@@ -14,7 +16,7 @@ def scan_source(namespace,source):
     queue=list(dict.fromkeys(([source['seeds'][0]]+json.loads(cursor[0])+source['seeds'][1:]) if cursor else source['seeds']))
     queue=[url for url in queue if url not in source.get('obsolete_seeds',[])]
     visited,failures,failed_pages=set(),[],[]
-    found_count,pages_read,added=0,0,0
+    found_count,pages_read,added,excluded=0,0,0,0
     page_limit,doc_limit=source.get('page_limit',6),source.get('document_limit',100)
     started=time.monotonic()
     budget=source.get('time_budget',120)
@@ -23,11 +25,12 @@ def scan_source(namespace,source):
     limited=False
     valid_empty=False
     def remember(found):
-        nonlocal found_count
+        nonlocal found_count,excluded
         found_count+=len(found)
         with m.connection() as con:
             for c in found:
                 if not m.permitted(c['url'],source):continue
+                if not relevance.should_fetch(c['title'],source):excluded+=1;continue
                 if con.execute('SELECT 1 FROM publications WHERE url=?',(m.canonical(c['url']),)).fetchone():
                     con.execute('INSERT OR IGNORE INTO publication_sources VALUES (?,?)',(m.canonical(c['url']),source['id']))
                     m.update_publication_title(con,c)
@@ -85,6 +88,10 @@ def scan_source(namespace,source):
     for row in pending:
         if time.monotonic()-started>budget:limited=True;break
         candidate=dict(row)
+        if not relevance.should_fetch(row['title'],source):
+            excluded+=1
+            with m.connection() as con:con.execute('DELETE FROM pending_documents WHERE source_id=? AND url=?',(source['id'],row['url']))
+            continue
         if source.get('publication_paths') and not any(re.search(pattern,urllib.parse.urlsplit(row['url']).path,re.I) for pattern in source['publication_paths']):
             with m.connection() as con:con.execute('DELETE FROM pending_documents WHERE source_id=? AND url=?',(source['id'],row['url']))
             continue
@@ -107,13 +114,14 @@ def scan_source(namespace,source):
     elif not found_count:
         status='partial' if failures or limited else ('collected' if retained or valid_empty else 'needs_adapter')
     else:status='partial' if failures or limited else 'collected'
-    detail=f'Прочитано страниц: {pages_read}; извлечено ссылок: {found_count}; добавлено: {added}; в очереди: {remaining}. '
+    detail=f'Прочитано страниц: {pages_read}; извлечено ссылок: {found_count}; добавлено: {added}; в очереди: {remaining}; исключено по предмету: {excluded}. '
     detail+='Проверены только настроенные разделы. '
     if limited:detail+='Обход продолжится со следующей страницы или очереди документов. '
     if status=='needs_adapter':detail+='Каталог не прочитан: отсутствие новых публикаций не подтверждено. '
     if valid_empty:detail+='Настроенный каталог Роструда прочитан, список документов в ответе пуст. '
     if failures:detail+='Ошибки: '+'; '.join(failures[:3])
     with m.connection() as con:
-        con.execute('UPDATE sources SET initialized=?,checked_at=?,status=?,detail=?,last_success=COALESCE(?,last_success) WHERE id=?',
-            (int(bool(previous['initialized']) or successful>0 or (status=='collected' and pages_read>0)),m.now(),status,detail,m.now() if status=='collected' else None,source['id']))
+        origin=os.environ.get('MEDPRAVO_NETWORK_ORIGIN') or ('GitHub Actions' if os.environ.get('GITHUB_ACTIONS')=='true' else 'Компьютер владельца')
+        con.execute('UPDATE sources SET initialized=?,checked_at=?,status=?,detail=?,last_success=COALESCE(?,last_success),network_origin=? WHERE id=?',
+            (int(bool(previous['initialized']) or successful>0 or (status=='collected' and pages_read>0)),m.now(),status,detail,m.now() if status=='collected' else None,origin,source['id']))
     return {'source':source['id'],'status':status,'added':added,'pending':remaining,'pages':pages_read}

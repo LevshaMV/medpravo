@@ -113,7 +113,7 @@ def export_site(site,repository='',archive=True,persist=None,archive_budget=90):
         last=con.execute('SELECT finished_at FROM runs WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1').fetchone()
     sources=[]
     for s in state['sources']:
-        sources.append({k:s.get(k) for k in ('id','name','group','description','seeds','status','detail','checked_at','last_success','enabled','transport_note')})
+        sources.append({k:s.get(k) for k in ('id','name','group','description','seeds','status','detail','checked_at','last_success','enabled','transport_note','network_origin')})
     # Not checked in GitHub yet must stay pending even when the seed contains publications.
     data={'schema':1,'generated_at':m.now(),'last_checked_at':last[0] if last else None,
           'repository':repository,'workflow_url':'https://github.com/'+repository+'/actions/workflows/collect.yml' if re.fullmatch(r'[\w.-]+/[\w.-]+',repository) else None,

@@ -257,6 +257,8 @@ def initialize():
             con.execute('ALTER TABLE pending_documents ADD COLUMN original_title TEXT')
         if 'source_page' not in [row[1] for row in con.execute('PRAGMA table_info(pending_documents)')]:
             con.execute('ALTER TABLE pending_documents ADD COLUMN source_page TEXT')
+        if 'network_origin' not in [row[1] for row in con.execute('PRAGMA table_info(sources)')]:
+            con.execute('ALTER TABLE sources ADD COLUMN network_origin TEXT')
         if not con.execute("SELECT 1 FROM settings WHERE id=1").fetchone():
             cfg = {"enabled_sources": [s["id"] for s in catalog() if s.get("enabled", True)]}
             con.execute("INSERT INTO settings VALUES (1,?)", (json.dumps(cfg),))

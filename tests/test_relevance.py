@@ -59,5 +59,9 @@ class ScopeTests(unittest.TestCase):
  def test_unsupported_disease_subspecialties_go_to_manual_review(self):
   for title in ['Клинические рекомендации: Сахарный диабет: ретинопатия и макулярный отёк','Клинические рекомендации: Доброкачественные опухоли век и конъюнктивы','Клинические рекомендации: Трансплантация печени','Клинические рекомендации: TRAPS — синдром некроза опухоли']:
    with self.subTest(title=title):self.assertEqual(relevance.evaluate(title,'',{'id':'clinrec'})['relevance'],'review')
+ def test_dental_and_internal_budget_documents_from_second_live_collection(self):
+  for title in ['Клинические рекомендации: Травма зубов · Взрослые','Клинические рекомендации: Одонтогенный остеомиелит челюсти','О перечне главных администраторов доходов бюджета ФФОМС']:
+   with self.subTest(title=title):self.assertEqual(relevance.evaluate(title,'',{'id':'ffoms' if 'бюджета' in title else 'clinrec'})['relevance'],'other')
+  self.assertEqual(relevance.evaluate('Клинические рекомендации: Острое повреждение почек у новорождённых детей','',{'id':'clinrec'})['relevance'],'review')
 
 if __name__=='__main__':unittest.main()
