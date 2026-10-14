@@ -107,6 +107,14 @@ class CollectorTests(unittest.TestCase):
         with patch.object(transport.urllib.request,'build_opener',return_value=opener),patch.object(transport,'pace'):
             with self.assertRaises(urllib.error.URLError):monitor.fetch(self.candidate['url'],self.source)
         self.assertEqual(opener.open.call_count,1)
+    def test_portal_database_overload_is_retried_and_reported_clearly(self):
+        def unavailable(*args,**kwargs):
+            raise urllib.error.HTTPError(self.candidate['url'],500,'Internal Server Error',{},io.BytesIO(b'Mysql connect error: Too many connections'))
+        opener=unittest.mock.Mock();opener.open.side_effect=unavailable
+        with patch.object(transport.urllib.request,'build_opener',return_value=opener),patch.object(transport,'pace'),patch.object(transport.time,'sleep'):
+            with self.assertRaises(urllib.error.HTTPError) as err:monitor.fetch(self.candidate['url'],self.source)
+        self.assertEqual(opener.open.call_count,2)
+        self.assertIn('базой данных',str(err.exception))
     def test_direct_network_uses_only_its_socket_interface(self):
         sock=unittest.mock.Mock()
         with patch.object(network.socket,'getaddrinfo',return_value=[(2,1,6,'',('8.8.8.8',443))]),patch.object(network.socket,'socket',return_value=sock):

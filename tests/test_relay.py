@@ -6,8 +6,22 @@ import urllib.request
 from unittest.mock import patch
 import russian_proxy as relay
 import transport
+from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 
 class RelayTests(unittest.TestCase):
+ def test_https_proxy_does_not_break_plain_http_sources(self):
+  class Page(BaseHTTPRequestHandler):
+   def do_GET(self):
+    self.send_response(200);self.end_headers();self.wfile.write(b'legal catalog')
+   def log_message(self,*args):pass
+  server=ThreadingHTTPServer(('127.0.0.1',0),Page)
+  thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+  try:
+   # Empty-string HTTP proxies cause urllib to fail with "no host given".
+   opener=urllib.request.build_opener(urllib.request.ProxyHandler({'https':transport.relay_url('http://127.0.0.1:8118')}))
+   with opener.open('http://127.0.0.1:'+str(server.server_port),timeout=3) as response:
+    self.assertEqual(response.read(),b'legal catalog')
+  finally:server.shutdown();server.server_close();thread.join(3)
  def test_only_approved_https_authorities_are_allowed(self):
   self.assertEqual(relay.destination('oms-kaluga.ru:443',{'oms-kaluga.ru'}),('oms-kaluga.ru',443))
   for target in ['evil.example:443','oms-kaluga.ru.evil.example:443','owner:secret@oms-kaluga.ru:443','oms-kaluga.ru:22','oms-kaluga.ru:443/private','127.0.0.1:443']:

@@ -81,7 +81,7 @@ def fetch(url,source,root,connection,permitted,canonical,redirect,payload=None):
     proxy=relay_url(os.environ.get('MEDPRAVO_HTTPS_PROXY',''))
     if proxy:
         # Certificate checks and source redirect restrictions remain active.
-        opener=urllib.request.build_opener(urllib.request.ProxyHandler({'https':proxy,'http':''}),redirect(source),urllib.request.HTTPSHandler(context=tls))
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({'https':proxy}),redirect(source),urllib.request.HTTPSHandler(context=tls))
     elif interface and os.name=='nt':
         class DirectHTTPSHandler(urllib.request.HTTPSHandler):
             def https_open(self,request):
@@ -101,7 +101,11 @@ def fetch(url,source,root,connection,permitted,canonical,redirect,payload=None):
             if exc.code==304 and cached:
                 with connection() as con:con.execute('UPDATE http_cache SET fetched=? WHERE url=?',(time.time(),url))
                 return decode(bytes(cached['body']),cached['content_type'],cached['charset'],cached['final_url'],True)
-            if exc.code not in (502,503,504) or attempt:raise
+            if exc.code==500:
+                snippet=exc.read(4096).decode('utf-8',errors='replace')
+                if 'Too many connections' in snippet:
+                    exc.msg='Сайт источника временно перегружен: превышен лимит соединений с его базой данных. Проверка будет повторена.'
+            if exc.code not in (500,502,503,504) or attempt:raise
         except urllib.error.URLError as exc:
             if isinstance(exc.reason,ssl.SSLCertVerificationError) or attempt:raise
         if attempt==0:time.sleep(0.5)

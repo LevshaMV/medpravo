@@ -1,5 +1,5 @@
 "use strict";
-let current=null,view="publications",offset=0,searchTimer,requestSerial=0;
+let current=null,view=(["publications","sources","settings","help"].includes(location.hash.slice(1))?location.hash.slice(1):"publications"),offset=0,searchTimer,requestSerial=0;
 const filters={q:"",source:"",topic:"",relevance:"medical",unread:""};
 const $=id=>document.getElementById(id);
 const escape=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -21,7 +21,7 @@ function render(){
  $("stats").innerHTML=[["По задачам центра",current.medical_count],["Не просмотрено по теме",current.unread],["Каталоги отвечают",successful+" / "+enabled.length],["Автоматическая проверка","Каждые 6 ч"]].map(([label,value])=>'<div class="stat"><div class="stat-top">'+escape(label)+'</div><strong>'+escape(value)+'</strong></div>').join("");
  if(current.local_test){$("stats").lastElementChild.querySelector('.stat-top').textContent='Локальная проверка';$("stats").lastElementChild.querySelector('strong').textContent='Вручную';}
  $("run-status").textContent=current.scanning?"Собираем документы…":!current.schedule.enabled?"Автоматический сбор выключен":current.last_checked_at?"Последний сбор: "+new Intl.DateTimeFormat("ru-RU",{dateStyle:"short",timeStyle:"short",timeZone:"Europe/Moscow"}).format(new Date(current.last_checked_at))+" МСК":"Проверка на GitHub ещё не выполнялась";$("scan").disabled=current.scanning;
- $("heading").textContent={publications:"Новые публикации",sources:"Источники",settings:"Настройки"}[view];
+ $("heading").textContent={publications:"Новые публикации",sources:"Источники",settings:"Настройки",help:"Как пользоваться"}[view];
  if(view==="publications"){
   $("body").innerHTML='<div class="coverage-note">'+(current.local_test?'Локальный тест: до двух страниц и десяти новых документов на источник. Автоматическая проверка выключена. ':'')+'Публичная лента. Отметки просмотра хранятся только в этом браузере. Запуски на GitHub могут задерживаться. Дата публикации и дата обнаружения различаются. Документы первой проверки отмечены как первоначальная подборка. Предмет акта добавляется в заголовок из описания источника, если оно доступно. По умолчанию — документы по услугам центра и общим требованиям к его работе. Связь определяется по предмету акта; название ведомства само по себе не считается основанием. Неясные документы доступны в подборке «Проверить вручную». Полного охвата это не подтверждает.</div><div class="toolbar feed-toolbar"><div class="searchbox"><input id="search" aria-label="Поиск" placeholder="Название или номер документа" value="'+escape(filters.q)+'"></div><select id="relevance" aria-label="Подборка"><option value="profile">Для центра + проверить вручную</option><option value="medical">По темам центра</option><option value="review">Проверить вручную</option><option value="all">Все собранные документы</option><option value="other">Остальные темы</option></select><select id="topic" aria-label="Тема"><option value="">Все темы</option>'+current.topics.map(t=>'<option>'+escape(t)+'</option>').join("")+'</select><select id="source" aria-label="Источник"><option value="">Все источники</option>'+current.sources.map(s=>'<option value="'+escape(s.id)+'">'+escape(s.name)+'</option>').join("")+'</select><label class="checkbox-label"><input type="checkbox" id="unread"> Только непросмотренные</label></div><div id="list-summary" class="plain-note"></div><section class="panel" id="publication-list"><div class="empty-docs">Загрузка…</div></section><div class="button-row pagination"><button class="button ghost" id="previous">Назад</button><button class="button ghost" id="next">Далее</button></div>';
   for(const key of ["relevance","topic","source"]){$(key).value=filters[key];$(key).onchange=()=>{filters[key]=$(key).value;offset=0;loadPublications();};}
@@ -31,6 +31,8 @@ function render(){
  }else if(view==="sources"){
   $("body").innerHTML='<div class="source-intro panel"><div><h2>Проверка открытых источников</h2><p>Источник в реестре ещё не означает рабочее подключение. Если раздел недоступен, отсутствие новых документов не подтверждено. Если сайт не открывается здесь, скопируйте ссылку и вставьте её в Яндекс Браузер. Открытие у вас и доступ сборщика GitHub проверяются отдельно.</p></div></div><div class="source-grid">'+current.sources.map((s,i)=>'<article class="panel source-card"><span class="badge '+(["partial","blocked","needs_adapter"].includes(s.status)?"amber":"neutral")+'">'+escape(labels[s.status])+'</span><h3>'+escape(s.name)+'</h3><p>'+escape(s.description)+'</p><div class="source-detail">'+escape(s.detail||"Проверка на этом сервере ещё не выполнялась")+(s.network_origin?"<p>Проверено через: "+escape(s.network_origin)+"</p>":"")+(s.transport_note?"<p>"+escape(s.transport_note)+"</p>":"")+'</div><div class="source-card-bottom"><span class="note">'+(current.settings.enabled_sources.includes(s.id)?"Включён":"Выключен")+' · '+date(s.checked_at)+'</span><a class="text-link" href="'+escape(s.seeds[0])+'" target="_blank" rel="noopener noreferrer">Сайт ↗</a><button class="button ghost" data-copy-source="'+i+'">Скопировать ссылку</button></div></article>').join("")+'</div>';
   document.querySelectorAll("[data-copy-source]").forEach(b=>b.onclick=()=>copySource(current.sources[Number(b.dataset.copySource)].seeds[0]));
+ }else if(view==="help"){
+  $("body").innerHTML=usageGuide();
  }else{
   $("body").innerHTML='<section class="panel settings-panel"><h2>Источники и обновление</h2><p class="plain-note">GitHub запускает сбор примерно каждые 6 часов. Для ручной проверки нажмите «Запустить на GitHub», затем Run workflow. Изменить источники можно в файле sources.json репозитория: enabled true/false. Список ниже показывает текущую настройку. Письма и ИИ не используются. Новые акты о внесении изменений попадают в ленту; старые файлы не сравниваются.</p><div class="checkbox-grid">'+current.sources.map(s=>'<label class="checkbox-label"><input type="checkbox" disabled name="source" value="'+escape(s.id)+'" '+(current.settings.enabled_sources.includes(s.id)?"checked":"")+'>'+escape(s.name)+'</label>').join("")+'</div><button class="button primary" id="save">Открыть Actions на GitHub</button></section>';
   $("save").onclick=()=>openWorkflow();
@@ -60,7 +62,7 @@ async function loadPublications(){
   document.querySelectorAll("[data-review]").forEach(b=>b.onclick=async()=>{const p=result.publications[Number(b.dataset.review)];b.disabled=true;try{await api("review",{url:p.url,reviewed:!p.reviewed});current=await api("state");render();}catch(e){message(e.message,true);b.disabled=false;}});
  }catch(e){if(serial===requestSerial)message(e.message,true);}
 }
-document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{view=b.dataset.view;requestSerial++;document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("active",x.dataset.view===view));render();});
+document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{view=b.dataset.view;history.replaceState(null,"","#"+view);requestSerial++;document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("active",x.dataset.view===view));render();});
 async function copySource(url){
  try{await navigator.clipboard.writeText(url);message("Ссылка скопирована. Вставьте её в адресную строку Яндекс Браузера.");}
  catch{message("Скопируйте адрес и вставьте в Яндекс Браузер: "+url);}
@@ -70,5 +72,5 @@ function openWorkflow(){
  else message("Это предварительный просмотр. В опубликованной версии здесь будет ссылка на запуск GitHub Actions.");
 }
 $("scan").onclick=openWorkflow;
-setInterval(()=>{if(view!=="settings"&&!document.querySelector("[data-download]:disabled")&&!['INPUT','SELECT'].includes(document.activeElement?.tagName))refresh();},30000);
+setInterval(()=>{if(!["settings","help"].includes(view)&&!document.querySelector("[data-download]:disabled")&&!['INPUT','SELECT'].includes(document.activeElement?.tagName))refresh();},30000);
 refresh();
