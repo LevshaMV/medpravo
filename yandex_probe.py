@@ -45,7 +45,7 @@ def main():
     print(subprocess.check_output([browser,'--version'],text=True).strip(),flush=True)
     results=[];control=None
     with tempfile.TemporaryDirectory() as profile:
-        env={k:v for k,v in os.environ.items() if k in ('PATH','HOME','LANG','LC_ALL','DISPLAY','XDG_RUNTIME_DIR')}
+        env={k:v for k,v in os.environ.items() if k in ('PATH','HOME','LANG','LC_ALL','DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR')}
         with open(Path(profile)/'browser.log','w+',encoding='utf-8') as log:
             process=subprocess.Popen([browser,'--no-first-run','--user-data-dir='+profile,
                 '--remote-debugging-address=127.0.0.1','--remote-debugging-port=9222','about:blank'],
