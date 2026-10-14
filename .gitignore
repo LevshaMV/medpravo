@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.test-temp/
+.state/
+site/
+data/
+*.sqlite*
+*.env
+local-password.txt

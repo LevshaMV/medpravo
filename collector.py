@@ -1,0 +1,119 @@
+"""Resumable per-source crawl; new links survive pagination and network failures."""
+import json
+import time
+import re
+from types import SimpleNamespace
+import urllib.parse
+import adapters
+
+def scan_source(namespace,source):
+    m=SimpleNamespace(**namespace)
+    with m.connection() as con:
+        previous=con.execute('SELECT * FROM sources WHERE id=?',(source['id'],)).fetchone()
+        cursor=con.execute('SELECT queue FROM source_cursor WHERE source_id=?',(source['id'],)).fetchone()
+    queue=list(dict.fromkeys(([source['seeds'][0]]+json.loads(cursor[0])+source['seeds'][1:]) if cursor else source['seeds']))
+    queue=[url for url in queue if url not in source.get('obsolete_seeds',[])]
+    visited,failures,failed_pages=set(),[],[]
+    found_count,pages_read,added=0,0,0
+    page_limit,doc_limit=source.get('page_limit',6),source.get('document_limit',100)
+    started=time.monotonic()
+    budget=source.get('time_budget',120)
+    api_kind=source.get('adapter') in ('clinrec','projects')
+    position=0
+    limited=False
+    valid_empty=False
+    def remember(found):
+        nonlocal found_count
+        found_count+=len(found)
+        with m.connection() as con:
+            for c in found:
+                if not m.permitted(c['url'],source):continue
+                if con.execute('SELECT 1 FROM publications WHERE url=?',(m.canonical(c['url']),)).fetchone():
+                    con.execute('INSERT OR IGNORE INTO publication_sources VALUES (?,?)',(m.canonical(c['url']),source['id']))
+                    m.update_publication_title(con,c)
+                    m.remember_source_page(con,c,source)
+                    continue
+                con.execute('INSERT OR IGNORE INTO pending_documents(source_id,url,title,published_at,metadata,text,created_at,original_title,source_page) VALUES (?,?,?,?,?,?,?,?,?)',
+                    (source['id'],m.canonical(c['url']),c['title'],c.get('published_at'),int(c.get('metadata',False)),c.get('text',''),m.now(),c.get('original_title') or c['title'],c.get('source_page')))
+    if api_kind:
+        with m.connection() as con:
+            row=con.execute('SELECT page FROM api_cursor WHERE source_id=?',(source['id'],)).fetchone()
+        tail=row[0] if row else 0
+        positions=list(dict.fromkeys([0]+list(range(max(1,tail),max(1,tail)+max(0,page_limit-1)))))
+        for position in positions:
+            if time.monotonic()-started>budget:limited=True;break
+            try:
+                url,payload=adapters.api_request(source,position,source.get('api_page_size',50))
+                result=m.fetch(url,source,payload)
+                parser=adapters.parse_clinrec if source['adapter']=='clinrec' else adapters.parse_projects
+                found,total=parser(result['text'],source)
+                remember(found);pages_read+=1
+                has_more=len(found)==source.get('api_page_size',50) and (total is None or (position+1)*len(found)<total)
+                limited=has_more
+                valid_empty=not found and total==0
+                with m.connection() as con:
+                    con.execute('INSERT OR REPLACE INTO api_cursor VALUES (?,?)',(source['id'],position+1 if has_more else 0))
+                if not has_more:break
+            except Exception as exc:failures.append(str(exc)[:240]);break
+        queue=[]
+    else:
+        while queue and len(visited)<page_limit and time.monotonic()-started<budget:
+            url=queue.pop(0)
+            if url in visited:continue
+            visited.add(url)
+            try:
+                result=m.fetch(url,source)
+                if result['type']!='text':raise ValueError('Каталог не является текстовой страницей')
+                found,pages=m.discover(result['text'],result['url'],source)
+                if source.get('adapter')=='miac':found=adapters.miac_rows(result['text'],result['url'],m.parse_page)
+                if source.get('adapter')=='ffoms':found=adapters.ffoms_rows(result['text'],result['url'],m.parse_page)
+                if source.get('adapter')=='rostrud' and not found:
+                    if re.search(r'class="b-listing-link"',result['text']) and re.search(r'<h1[^>]*>Переч(?:ень|ни)',result['text']):valid_empty=True
+                for candidate in found:candidate.setdefault('source_page',result['url'])
+                remember(found);pages_read+=1
+                queue.extend(p for p in pages if p not in visited and p not in queue)
+            except Exception as exc:
+                failures.append(type(exc).__name__+': '+str(exc)[:220])
+                failed_pages.append(url)
+        queue=list(dict.fromkeys(queue+failed_pages))
+        limited=bool(queue)
+    with m.connection() as con:
+        con.execute('INSERT OR REPLACE INTO source_cursor VALUES (?,?)',(source['id'],json.dumps(queue)))
+        pending=con.execute('SELECT * FROM pending_documents WHERE source_id=? AND next_retry<=? ORDER BY created_at,url LIMIT ?',
+            (source['id'],time.time(),doc_limit)).fetchall()
+    successful=0
+    for row in pending:
+        if time.monotonic()-started>budget:limited=True;break
+        candidate=dict(row)
+        if source.get('publication_paths') and not any(re.search(pattern,urllib.parse.urlsplit(row['url']).path,re.I) for pattern in source['publication_paths']):
+            with m.connection() as con:con.execute('DELETE FROM pending_documents WHERE source_id=? AND url=?',(source['id'],row['url']))
+            continue
+        try:
+            result={'type':'metadata','text':row['text']} if row['metadata'] else m.fetch(row['url'],source)
+            added+=m.store_publication(source,candidate,result,not previous['initialized'])
+            successful+=1
+            with m.connection() as con:con.execute('DELETE FROM pending_documents WHERE source_id=? AND url=?',(source['id'],row['url']))
+        except Exception as exc:
+            failures.append(type(exc).__name__+': '+str(exc)[:180])
+            with m.connection() as con:
+                con.execute('UPDATE pending_documents SET attempts=attempts+1,next_retry=? WHERE source_id=? AND url=?',
+                    (time.time()+min(21600,60*2**min(row['attempts'],8)),source['id'],row['url']))
+    with m.connection() as con:
+        remaining=con.execute('SELECT COUNT(*) FROM pending_documents WHERE source_id=?',(source['id'],)).fetchone()[0]
+        retained=con.execute("SELECT COUNT(*) FROM publication_sources ps JOIN publications p ON p.url=ps.url WHERE ps.source_id=? AND p.category!='Справочная страница'",(source['id'],)).fetchone()[0]
+    limited=limited or remaining>0
+    if pages_read==0:
+        status='blocked' if failures else 'needs_adapter'
+    elif not found_count:
+        status='partial' if failures or limited else ('collected' if retained or valid_empty else 'needs_adapter')
+    else:status='partial' if failures or limited else 'collected'
+    detail=f'Прочитано страниц: {pages_read}; извлечено ссылок: {found_count}; добавлено: {added}; в очереди: {remaining}. '
+    detail+='Проверены только настроенные разделы. '
+    if limited:detail+='Обход продолжится со следующей страницы или очереди документов. '
+    if status=='needs_adapter':detail+='Каталог не прочитан: отсутствие новых публикаций не подтверждено. '
+    if valid_empty:detail+='Настроенный каталог Роструда прочитан, список документов в ответе пуст. '
+    if failures:detail+='Ошибки: '+'; '.join(failures[:3])
+    with m.connection() as con:
+        con.execute('UPDATE sources SET initialized=?,checked_at=?,status=?,detail=?,last_success=COALESCE(?,last_success) WHERE id=?',
+            (int(bool(previous['initialized']) or successful>0 or (status=='collected' and pages_read>0)),m.now(),status,detail,m.now() if status=='collected' else None,source['id']))
+    return {'source':source['id'],'status':status,'added':added,'pending':remaining,'pages':pages_read}

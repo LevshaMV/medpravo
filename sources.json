@@ -1,0 +1,549 @@
+[
+  {
+    "id": "pravo",
+    "name": "Официальное опубликование",
+    "group": "Федеральные",
+    "description": "Федеральные публикации и акты Калужской области. Ссылки на документы других регионов исключаются по номеру опубликования.",
+    "seeds": [
+      "http://publication.pravo.gov.ru/documents/weekly"
+    ],
+    "allowed_domains": [
+      "publication.pravo.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "publication_prefixes": [
+      "0001",
+      "4000"
+    ],
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem",
+    "transport_note": "Каталог читается по опубликованному HTTP-адресу портала. Сверяйте значимые документы в первоисточнике."
+  },
+  {
+    "id": "minzdrav",
+    "name": "Минздрав России",
+    "group": "Федеральные",
+    "description": "Порядки помощи, стандарты, лицензирование, анестезиология, педиатрия, стационар.",
+    "seeds": [
+      "https://minzdrav.gov.ru/documents"
+    ],
+    "allowed_domains": [
+      "minzdrav.gov.ru",
+      "rosminzdrav.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "ffoms",
+    "name": "ФФОМС",
+    "group": "ОМС",
+    "description": "Правила ОМС, оплата, контроль качества, экспертизы, реестры и отчётность.",
+    "seeds": [
+      "https://www.ffoms.gov.ru/documents/the-orders-oms/",
+      "https://www.ffoms.gov.ru/documents/the-orders-of-the-ministry-of-health/",
+      "https://www.ffoms.gov.ru/documents/federal-laws/",
+      "https://www.ffoms.gov.ru/documents/decisions-and-orders-of-the-government/"
+    ],
+    "allowed_domains": [
+      "ffoms.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "ffoms",
+    "ca_bundle": "russian-chain.pem"
+  },
+  {
+    "id": "tfoms",
+    "name": "ТФОМС Калужской области",
+    "group": "ОМС",
+    "description": "ТФОМС Калужской области. Текущий адрес подтверждён перечнем территориального фонда; прежний oms.kaluga.ru отвечает сертификатом сетевого шлюза.",
+    "seeds": [
+      "https://oms-kaluga.ru/documents/normativnye-dokumenty-kaluzhskoy-oblasti/tarifnye-soglasheniya",
+      "https://oms-kaluga.ru/documents/normativnye-dokumenty-kaluzhskoy-oblasti/programma-gosgarantiy",
+      "https://oms-kaluga.ru/documents/normativnye-dokumenty-kaluzhskoy-oblasti/dokumenty-fonda",
+      "https://oms-kaluga.ru/documents/federalnye-normativnye-dokumenty/normativnye-akty-foms-i-minzdrava"
+    ],
+    "allowed_domains": [
+      "oms-kaluga.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem"
+  },
+  {
+    "id": "kaluga-health",
+    "name": "Минздрав Калужской области",
+    "group": "Калужская область",
+    "description": "Региональные приказы, направления, диагностическая помощь и территориальная программа.",
+    "seeds": [
+      "https://minzdrav.admoblkaluga.ru/docs/cat-normativnye-pravovye-akty/",
+      "https://minzdrav.admoblkaluga.ru/page/normativno-pravovye-akty/"
+    ],
+    "allowed_domains": [
+      "minzdrav.admoblkaluga.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "ca_bundle": "russian-chain.pem",
+    "adapter": "html",
+    "follow_patterns": [
+      "^/page/(prikaz|normativ)"
+    ]
+  },
+  {
+    "id": "kaluga-gov",
+    "name": "Правительство Калужской области",
+    "group": "Калужская область",
+    "description": "Региональные акты, госгарантии, бюджет ОМС. Уточнение официальной публикации.",
+    "seeds": [
+      "https://admoblkaluga.ru/docs/normativnye-pravovye-akty/"
+    ],
+    "allowed_domains": [
+      "admoblkaluga.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "ca_bundle": "russian-chain.pem",
+    "adapter": "html"
+  },
+  {
+    "id": "roszdrav",
+    "name": "Росздравнадзор",
+    "group": "Надзор и безопасность",
+    "description": "Контроль качества, лицензирование, безопасность лекарств и медицинских изделий.",
+    "seeds": [
+      "https://roszdravnadzor.gov.ru/"
+    ],
+    "allowed_domains": [
+      "roszdravnadzor.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "devices",
+    "name": "Письма о медизделиях",
+    "group": "Надзор и безопасность",
+    "description": "Предупреждения и отзывы, Siemens Magnetom Harmony и Toshiba Aquilion 64, расходные материалы.",
+    "seeds": [
+      "https://www.roszdravnadzor.gov.ru/medproducts/control"
+    ],
+    "allowed_domains": [
+      "roszdravnadzor.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "rospotreb",
+    "name": "Роспотребнадзор",
+    "group": "Надзор и безопасность",
+    "description": "СанПиН, КТ и рентген, дозиметрия, инфекционная безопасность, отходы.",
+    "seeds": [
+      "https://rospotrebnadzor.ru/"
+    ],
+    "allowed_domains": [
+      "rospotrebnadzor.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem"
+  },
+  {
+    "id": "kaluga-rospotreb",
+    "name": "Роспотребнадзор · Калуга",
+    "group": "Калужская область",
+    "description": "Региональные санитарные требования и разъяснения.",
+    "seeds": [
+      "https://40.rospotrebnadzor.ru/"
+    ],
+    "allowed_domains": [
+      "40.rospotrebnadzor.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem"
+  },
+  {
+    "id": "clinrec",
+    "name": "Клинические рекомендации",
+    "group": "Медицина",
+    "description": "Версии и статус применения рекомендаций по всем профилям центра.",
+    "seeds": [
+      "https://cr.minzdrav.gov.ru/clin-rec"
+    ],
+    "allowed_domains": [
+      "cr.minzdrav.gov.ru",
+      "apicr.minzdrav.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Клинические рекомендации",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "clinrec",
+    "api_page_size": 50
+  },
+  {
+    "id": "grls",
+    "name": "Реестр лекарственных средств",
+    "group": "Медицина",
+    "description": "Контрастные препараты, анестетики, инструкции и изменения регистрационных сведений.",
+    "seeds": [
+      "https://grls.rosminzdrav.ru/"
+    ],
+    "allowed_domains": [
+      "grls.rosminzdrav.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": false,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "regulation",
+    "name": "Проекты нормативных актов",
+    "group": "Проекты",
+    "description": "Проекты и обсуждения. Отдельная пометка: документ ещё не принят.",
+    "seeds": [
+      "https://regulation.gov.ru/opendata/7710349494-npalist/"
+    ],
+    "allowed_domains": [
+      "regulation.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Проект",
+    "enabled": false,
+    "time_budget": 120,
+    "adapter": "projects",
+    "api_page_size": 50
+  },
+  {
+    "id": "duma",
+    "name": "Законопроекты Госдумы",
+    "group": "Проекты",
+    "description": "Экспериментальное подключение карточек законопроектов. Общий каталог не считается отдельным актом; источник выключен по умолчанию и требует адаптера списка.",
+    "seeds": [
+      "https://sozd.duma.gov.ru/"
+    ],
+    "allowed_domains": [
+      "sozd.duma.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Проект",
+    "enabled": false,
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem",
+    "publication_paths": [
+      "^/bill/\\d+-\\d+/?$"
+    ]
+  },
+  {
+    "id": "rostrud",
+    "name": "Роструд",
+    "group": "Работа центра",
+    "description": "Медицинский персонал, трудовые отношения, охрана труда.",
+    "seeds": [
+      "https://rostrud.gov.ru/control/soblyudenie-zakonodatelstva-o-trude/?CAT_ID=27211",
+      "https://rostrud.gov.ru/rostrud/deyatelnost/proekty-perechney-aktov-soderzhashchikh-obyazatelnye-trebovaniya-soblyudenie-kotorykh-otsenivaetsya-/"
+    ],
+    "allowed_domains": [
+      "rostrud.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "rostrud",
+    "ca_bundle": "russian-chain.pem"
+  },
+  {
+    "id": "fns",
+    "name": "ФНС России",
+    "group": "Работа центра",
+    "description": "Налоги и учёт медицинских организаций, кассы, региональные изменения.",
+    "seeds": [
+      "https://www.nalog.gov.ru/rn40/about_fts/docs/",
+      "https://www.nalog.gov.ru/rn40/about_fts/docs_fts/"
+    ],
+    "allowed_domains": [
+      "nalog.gov.ru",
+      "data.nalog.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "rkn",
+    "name": "Роскомнадзор",
+    "group": "Работа центра",
+    "description": "Персональные данные, сайт центра, обработка сведений о здоровье.",
+    "seeds": [
+      "https://rkn.gov.ru/chamber-of-commerce/podzakonnye-i-vedomstvennye-normativnye-akty/p1246/",
+      "https://rkn.gov.ru/activity/personal-data/for-operators/",
+      "https://rkn.gov.ru/activity/personal-data/"
+    ],
+    "allowed_domains": [
+      "rkn.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem",
+    "follow_patterns": [
+      "^/activity/personal-data/",
+      "^/chamber-of-commerce/podzakonnye-i-vedomstvennye-normativnye-akty/"
+    ]
+  },
+  {
+    "id": "fas",
+    "name": "ФАС России",
+    "group": "Работа центра",
+    "description": "Реклама медицинских услуг и конкуренция.",
+    "seeds": [
+      "https://fas.gov.ru/"
+    ],
+    "allowed_domains": [
+      "fas.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem"
+  },
+  {
+    "id": "government",
+    "name": "Правительство России",
+    "group": "Федеральные",
+    "description": "Официальные документы. Сборщик требует проверки и настройки на вашем сервере.",
+    "seeds": [
+      "http://government.ru/docs/"
+    ],
+    "allowed_domains": [
+      "government.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem",
+    "transport_note": "Каталог доступен по официальному HTTP-адресу; HTTPS из этой сети недоступен."
+  },
+  {
+    "id": "mintrud",
+    "name": "Минтруд — лента документов",
+    "group": "Кадры",
+    "description": "Официальные документы. Сборщик требует проверки и настройки на вашем сервере.",
+    "seeds": [
+      "https://mintrud.gov.ru/document/rss"
+    ],
+    "allowed_domains": [
+      "mintrud.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "minfin",
+    "name": "Минфин России",
+    "group": "Налоги и учёт",
+    "description": "Официальные документы. Сборщик требует проверки и настройки на вашем сервере.",
+    "seeds": [
+      "https://minfin.gov.ru/ru/document/"
+    ],
+    "allowed_domains": [
+      "minfin.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "minjust",
+    "name": "Минюст России",
+    "group": "Федеральные",
+    "description": "Официальные документы. Сборщик требует проверки и настройки на вашем сервере.",
+    "seeds": [
+      "https://minjust.gov.ru/ru/documents/"
+    ],
+    "allowed_domains": [
+      "minjust.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "eaeu",
+    "name": "Правовой портал ЕАЭС",
+    "group": "Медизделия и лекарства",
+    "description": "Официальные документы. Сборщик требует проверки и настройки на вашем сервере.",
+    "seeds": [
+      "https://docs.eaeunion.org/"
+    ],
+    "allowed_domains": [
+      "eaeunion.org"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "pravo-text",
+    "name": "Правовые акты с изменениями",
+    "group": "Федеральные",
+    "description": "Официальные документы. Сборщик требует проверки и настройки на вашем сервере.",
+    "seeds": [
+      "http://pravo.gov.ru/"
+    ],
+    "allowed_domains": [
+      "pravo.gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": false,
+    "time_budget": 120,
+    "adapter": "html",
+    "ca_bundle": "russian-chain.pem",
+    "transport_note": "Официальный портал доступен по HTTP; этот источник выключен по умолчанию.",
+    "obsolete_seeds": [
+      "http://www.pravo.gov.ru/"
+    ]
+  },
+  {
+    "id": "kaluga-city",
+    "name": "Администрация города Калуги",
+    "group": "Калуга",
+    "description": "Муниципальные правовые акты. В подборке центра — документы по медицинским и общим требованиям.",
+    "seeds": [
+      "https://www.kaluga-gov.ru/administratsiya/zakonotvorchestvo/munitsipalnye-pravovye-akty/"
+    ],
+    "allowed_domains": [
+      "kaluga-gov.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": false,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "html"
+  },
+  {
+    "id": "kaluga-miac",
+    "name": "МИАЦ Калужской области",
+    "group": "Калуга",
+    "description": "Документы областного медицинского информационно-аналитического центра, приказы и инструкции.",
+    "seeds": [
+      "https://miac.kaluga.ru/documents?parent_id=1",
+      "https://miac.kaluga.ru/documents?parent_id=3",
+      "https://miac.kaluga.ru/documents?parent_id=6",
+      "https://miac.kaluga.ru/documents?parent_id=31",
+      "https://miac.kaluga.ru/documents?parent_id=60"
+    ],
+    "allowed_domains": [
+      "miac.kaluga.ru"
+    ],
+    "page_limit": 6,
+    "document_limit": 100,
+    "medical": true,
+    "kind": "Документ",
+    "enabled": true,
+    "time_budget": 120,
+    "adapter": "miac"
+  }
+]
