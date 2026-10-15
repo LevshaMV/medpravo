@@ -10,8 +10,12 @@ function createGitHubClient(href,fetchImpl,storage){
   if(!response.ok)throw Error('Не удалось загрузить ленту: '+response.status);
   const data=await response.json();
   if(data.schema!==1||!Array.isArray(data.publications)||!Array.isArray(data.sources))throw Error('Некорректный формат ленты');
-  data.publications=data.publications.filter(p=>safeURL(p.url)).map(p=>({...p,date_evidence:safeURL(p.date_evidence)?p.date_evidence:null,text_source:safeURL(p.text_source)?p.text_source:null,source_page:safeURL(p.source_page)?p.source_page:null,download_path:safePath(p.download_path)?p.download_path:null}));
-  data.sources=data.sources.map(s=>({...s,homepage:safeURL(s.homepage)?s.homepage:null,seeds:s.seeds.filter(safeURL)})).filter(s=>s.seeds.length);
+  data.publications=data.publications.filter(p=>safeURL(p.url)).map(p=>{
+   const project=p.source_id==='regulation'?/^https:\/\/regulation\.gov\.ru\/api\/npalist\/(\d+)\/?$/.exec(p.url):null;
+   const card=project?'https://regulation.gov.ru/projects/'+project[1]+'/':null;
+   return {...p,open_url:card||p.url,date_evidence:safeURL(p.date_evidence)?p.date_evidence:null,text_source:safeURL(p.text_source)?p.text_source:null,source_page:card||(safeURL(p.source_page)?p.source_page:null),download_path:safePath(p.download_path)?p.download_path:null};
+  });
+  data.sources=data.sources.map(s=>({...s,homepage:s.id==='regulation'?'https://regulation.gov.ru/':safeURL(s.homepage)?s.homepage:null,seeds:s.seeds.filter(safeURL)})).filter(s=>s.seeds.length);
   data.workflow_url=/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/workflows\/collect\.yml$/.test(data.workflow_url||'')?data.workflow_url:null;
   snapshot=data;return data;
  }
