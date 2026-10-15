@@ -2,6 +2,8 @@ import contextlib
 import gzip
 import importlib
 import json
+import re
+import shutil
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -45,6 +47,17 @@ class GitHubTests(unittest.TestCase):
             self.assertEqual(con.execute('SELECT count(*) FROM http_cache').fetchone()[0],0)
             self.assertIn('page=2',con.execute('SELECT queue FROM source_cursor').fetchone()[0])
         with self.assertRaises(ValueError):c.restore_state(persist,fresh)
+    def test_changed_frontend_gets_a_new_cache_key(self):
+        assets=self.root/'frontend';shutil.copytree(c.ROOT/'github_static',assets/'github_static')
+        with patch.object(c,'ROOT',assets):
+            c.export_site(self.root/'first','LevshaMV/medpravo',archive=False)
+            first=(self.root/'first/index.html').read_text(encoding='utf-8')
+            with (assets/'github_static/app.js').open('a',encoding='utf-8') as out:out.write('\n// new release\n')
+            c.export_site(self.root/'second','LevshaMV/medpravo',archive=False)
+            second=(self.root/'second/index.html').read_text(encoding='utf-8')
+        def asset(page,name):return re.search(r'\./'+re.escape(name)+r'\?v=[a-f0-9]+',page)[0]
+        self.assertNotEqual(asset(first,'app.js'),asset(second,'app.js'))
+        self.assertEqual(asset(first,'style.css'),asset(second,'style.css'))
     def test_corrupt_state_does_not_silently_reset_history(self):
         persist=self.root/'persist';persist.mkdir();(persist/'state.sqlite.gz').write_bytes(gzip.compress(b'not sqlite'))
         with self.assertRaises(ValueError):c.restore_state(persist,self.root/'new')

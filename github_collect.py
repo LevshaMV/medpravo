@@ -108,6 +108,14 @@ def export_site(site,repository='',archive=True,persist=None,archive_budget=90):
     site.mkdir(parents=True,exist_ok=True)
     for p in (ROOT/'github_static').iterdir():
         if p.is_file():shutil.copyfile(p,site/p.name)
+    # Each release gets content-based asset URLs. A cached previous app must not
+    # hide new controls or interpret a newly published data schema incorrectly.
+    index=site/'index.html'
+    html=index.read_text(encoding='utf-8')
+    for name in ('style.css','github-client.js','help.js','app.js'):
+        version=hashlib.sha256((site/name).read_bytes()).hexdigest()[:16]
+        html=html.replace('./'+name+'"','./'+name+'?v='+version+'"')
+    index.write_text(html,encoding='utf-8')
     (site/'.nojekyll').write_text('',encoding='utf-8')
     pubs=publications()
     archive_report=archive_files(pubs,persist,site,budget=archive_budget) if archive else {'files':0,'bytes':0,'errors':[]}
