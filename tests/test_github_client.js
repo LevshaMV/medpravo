@@ -28,6 +28,16 @@ async function main(){
  assert.equal((await client('publications?relevance=medical')).total,55);
  assert.equal((await client('publications?relevance=review')).total,1);
  assert.equal((await client('publications?relevance=other')).total,1);
+ data.sources.push({id:'regulation',seeds:['https://regulation.gov.ru/opendata/7710349494-npalist/']});
+ const projectURL='https://regulation.gov.ru/api/npalist/171878';
+ data.publications.push({url:projectURL,title:'Проект о медицинской помощи',relevance:'medical',source_id:'regulation',topics:['Работа центра'],open_url:'javascript:alert(1)'});
+ const projects=await client('state');
+ const project=projects.publications.find(p=>p.source_id==='regulation');
+ assert.equal(project.url,projectURL);assert.equal(project.open_url,'https://regulation.gov.ru/projects/171878/');
+ assert.equal(project.source_page,project.open_url);
+ assert.equal(projects.sources.find(s=>s.id==='regulation').homepage,'https://regulation.gov.ru/');
+ await client('review',{url:projectURL,reviewed:true});
+ assert.ok((await client('publications?source=regulation')).publications[0].reviewed);
  console.log('GitHub client checks passed: filtering, paging, read flags, relative paths, unsafe links, storage failure');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
