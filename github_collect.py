@@ -67,6 +67,7 @@ def publications():
         ext=Path(urllib.parse.urlsplit(p['url']).path).suffix.lower()
         item['file_type']=ext[1:] if ext in m.ALLOWED_EXT else None
         item.update(text_excerpt=(p['extracted_text'] or '')[:6000],text_status=p['text_status'] or 'not_extracted',date_basis=p['date_basis'] or 'Сохранённая дата публикации источника',date_evidence=p['date_evidence'] if p['date_evidence'] and m.permitted(p['date_evidence'],source) else item['source_page'],text_source=p['text_source'] if p['text_source'] and m.permitted(p['text_source'],source) else None)
+        item['date_kind']='registration' if p['source_id']=='duma' and (p['date_basis'] or '').startswith('Дата регистрации законопроекта') else 'document' if (p['date_basis'] or '').startswith('Дата самого акта') else 'publication'
         result.append(item)
     return result
 
@@ -124,7 +125,7 @@ def export_site(site,repository='',archive=True,persist=None,archive_budget=90):
         last=con.execute('SELECT finished_at FROM runs WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1').fetchone()
     sources=[]
     for s in state['sources']:
-        sources.append({k:s.get(k) for k in ('id','name','group','description','seeds','status','detail','checked_at','last_success','enabled','transport_note','network_origin')})
+        sources.append({k:s.get(k) for k in ('id','name','group','description','seeds','homepage','status','detail','checked_at','last_success','enabled','transport_note','network_origin')})
     # Not checked in GitHub yet must stay pending even when the seed contains publications.
     data={'schema':1,'generated_at':m.now(),'last_checked_at':last[0] if last else None,
           'repository':repository,'workflow_url':'https://github.com/'+repository+'/actions/workflows/collect.yml' if re.fullmatch(r'[\w.-]+/[\w.-]+',repository) else None,
@@ -144,6 +145,7 @@ def compact_state(persist):
     with contextlib.closing(sqlite3.connect(target)) as con:
         con.execute('PRAGMA journal_mode=DELETE')
         con.execute('DELETE FROM http_cache')
+        con.execute('DELETE FROM document_outcomes WHERE expires<?',(time.time()-86400,))
         con.execute('UPDATE publications SET reviewed=0')
         con.execute('DELETE FROM runs WHERE id NOT IN (SELECT id FROM runs ORDER BY started_at DESC LIMIT 20)')
         con.commit();con.execute('VACUUM')
@@ -183,7 +185,7 @@ def main():
         con.execute('UPDATE settings SET data=? WHERE id=1',(json.dumps({'enabled_sources':[s['id'] for s in cfg if s.get('enabled',True)]}),))
     if not args.export_only:
         # Bound runtime while preserving source queues for subsequent executions.
-        bounded=[{**s,'page_limit':min(s.get('page_limit',6),3),'document_limit':min(s.get('document_limit',100),30),'time_budget':75} for s in cfg]
+        bounded=[{**s,'page_limit':max(min(s.get('page_limit',6),16),len(s['seeds'])+2),'document_limit':min(s.get('document_limit',100),80),'time_budget':s.get('github_time_budget',100)} for s in cfg]
         original=m.catalog;m.catalog=lambda:bounded
         try:
             result=m.scan()

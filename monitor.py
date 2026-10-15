@@ -252,6 +252,7 @@ def initialize():
         CREATE INDEX IF NOT EXISTS cache_fetched ON http_cache(fetched);
         CREATE TABLE IF NOT EXISTS source_cursor (source_id TEXT PRIMARY KEY,queue TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS api_cursor (source_id TEXT PRIMARY KEY,page INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS document_outcomes(source_id TEXT,url_hash TEXT,signature TEXT,expires REAL,reason TEXT,PRIMARY KEY(source_id,url_hash));
         CREATE TABLE IF NOT EXISTS pending_documents (source_id TEXT,url TEXT,title TEXT,published_at TEXT,
           metadata INTEGER NOT NULL DEFAULT 0,text TEXT NOT NULL DEFAULT '',attempts INTEGER NOT NULL DEFAULT 0,
           next_retry REAL NOT NULL DEFAULT 0,created_at TEXT,PRIMARY KEY(source_id,url));
@@ -380,6 +381,7 @@ def store_publication(source, candidate, result, initial):
     published=normalized_date(candidate.get('published_at'))
     date_basis=candidate.get('date_basis') or 'Дата публикации в каталоге / API источника'
     date_evidence=candidate.get('source_page') or url
+    document_fallback=source.get('allow_document_date',False)
     if result["type"] == "text":
         # Navigation and footer text are excluded by PageParser. Relevance is a keyword hint.
         body=re.search(r'<(main|article)\b[^>]*>(.*?)</\1>',result['text'],re.I|re.S)
@@ -389,17 +391,20 @@ def store_publication(source, candidate, result, initial):
         if details.get('conflict'):
             result['date_rejected']=True;return False
         if details['date']:
-            if published and published!=details['date']:
+            if published and published!=details['date'] and not date_basis.startswith('Дата самого акта'):
                 result['date_rejected']=True;return False
             published=details['date'];date_basis=details['basis'];date_evidence=url
         status='page_text' if text.strip() else 'metadata_only'
+    if not published and document_fallback:
+        published=document_metadata.document_date(title)
+        if published:date_basis='Дата самого акта; дата публикации не указана'
     if globals().get('PUBLICATION_SINCE'):
         import date_policy
-        if not date_policy.eligible(published):result['date_rejected']=True;return False
+        if published and not date_policy.eligible(published) or not published and not document_fallback:result['date_rejected']=True;return False
     # Only fetch attachments once the publication date has passed the cutoff.
     if result['type']=='binary':
         extracted=text_extract.extract(result.get('raw',b''));text=extracted['text'];status=extracted['status']
-    elif result['type']=='text' and published:
+    elif result['type']=='text' and (published or document_fallback):
         for attachment in document_metadata.attachments(result['text'],result.get('url',url),source,parse_page,permitted):
             try:
                 file=fetch(attachment,source)
@@ -408,6 +413,10 @@ def store_publication(source, candidate, result, initial):
                 if extracted['text']:text=extracted['text']
                 break
             except (OSError,ValueError):status='attachment_unavailable'
+    if not published and document_fallback:
+        published=document_metadata.document_date(title,text)
+        if published:date_basis='Дата самого акта; дата публикации не указана';date_evidence=text_source
+    if globals().get('PUBLICATION_SINCE') and not date_policy.eligible(published):result['date_rejected']=True;return False
     relevance, topics, category = classify(title, text, source)
     with connection() as con:
         cursor = con.execute("INSERT OR IGNORE INTO publications VALUES (?,?,?,?,?,?,?,?,?,0)",
@@ -430,7 +439,7 @@ def scan():
         with connection() as con:
             con.execute("INSERT INTO runs(id,started_at) VALUES (?,?)", (run_id,now()))
         enabled = settings()["enabled_sources"]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1,min(3,int(os.environ.get('MEDPRAVO_WORKERS','2'))))) as pool:
             results = list(pool.map(scan_source,[s for s in catalog() if s["id"] in enabled]))
         with connection() as con:
             con.execute("UPDATE runs SET finished_at=?,summary=? WHERE id=?", (now(),json.dumps(results,ensure_ascii=False),run_id))

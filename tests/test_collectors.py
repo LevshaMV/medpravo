@@ -37,6 +37,25 @@ class CollectorTests(unittest.TestCase):
         source['page_limit']=2
         with patch.object(monitor,'fetch',side_effect=[page1,self.content('')]) as fetch:monitor.scan_source(source)
         self.assertTrue(any('page=2' in call.args[0] for call in fetch.call_args_list))
+    def test_saved_frontier_does_not_starve_other_oms_seed_sections(self):
+        source={**self.source,'page_limit':2,'seeds':['https://minzdrav.gov.ru/tariffs','https://minzdrav.gov.ru/programme']}
+        with monitor.connection() as con:con.execute('INSERT OR REPLACE INTO source_cursor VALUES (?,?)',(source['id'],'["https://minzdrav.gov.ru/tariffs?page=29"]'))
+        with patch.object(monitor,'fetch',return_value=self.content('')) as fetch:monitor.scan_source(source)
+        self.assertEqual([call.args[0] for call in fetch.call_args_list],source['seeds'])
+    def test_undated_candidate_is_not_redownloaded_on_every_run(self):
+        source={**self.source,'page_limit':1}
+        listing=self.content('<a href="/documents/test">Приказ о медицинской помощи детям</a>')
+        with patch.dict(monitor.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(monitor,'fetch',side_effect=[listing,self.content('')]):monitor.scan_source(source)
+        with patch.dict(monitor.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(monitor,'fetch',return_value=listing) as fetch:result=monitor.scan_source(source)
+        self.assertEqual(fetch.call_count,1);self.assertEqual(result['pending'],0)
+    def test_grls_news_date_is_not_the_registration_certificate_date(self):
+        page='<div class="info-panel__data"><div class="info-panel__date-time">14 окт 2026<p>15:30</p></div><div class="info-panel__topic">Приказ об анестетике. РУ от 27.04.2024</div><a href="ForumTopic.aspx?idTopic=123">подробнее</a></div>'
+        found,_=adapters.grls_rows(page,'https://grls.rosminzdrav.ru/',monitor.parse_page)
+        self.assertEqual(found[0]['published_at'],'2026-10-14');self.assertIn('idTopic=123',found[0]['url'])
+    def test_duma_registration_is_explicitly_not_a_law_publication(self):
+        page='<div data-clickopen="/bill/123-9" class="obj_item"><span>Зарегистрирован 09.10.2026</span><div class="o_txt"><p>О медицинской помощи детям</p></div></div>'
+        found,_=adapters.duma_rows(page,'https://sozd.duma.gov.ru/',monitor.parse_page)
+        self.assertEqual(found[0]['published_at'],'2026-10-09');self.assertIn('не принятия закона',found[0]['date_basis'])
     def test_api_metadata_requires_no_document_download(self):
         source=next(s for s in monitor.catalog() if s['id']=='clinrec')
         response=self.content()
@@ -73,6 +92,12 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(len(links),1)
         monitor.store_publication(source,links[0],{**self.content(),'text':'<title>Приказы ФОМС</title>'},False)
         self.assertEqual(monitor.list_publications({})['publications'][0]['title'],'Совместное письмо от 03.04.2026 № 31-2/6103')
+    def test_ffoms_prefers_actual_files_and_preserves_day_hospital_spreadsheet(self):
+        source=next(s for s in monitor.catalog() if s['id']=='ffoms')
+        html='<div class="structure-list p-3"><a href="/upload/act.pdf"></a><a href="/documents/the-orders-oms/letter-1/"></a><div class="job">Совместное письмо от 07.10.2026 № 3</div><div class="name">Об оплате медицинской помощи</div><a href="/upload/day.xlsx">Расшифровка дневного стационара</a></div>'
+        links=adapters.ffoms_rows(html,source['seeds'][0],monitor.parse_page)
+        self.assertEqual(len(links),2);self.assertTrue(links[0]['url'].endswith('/act.pdf'))
+        self.assertTrue(links[1]['url'].endswith('/day.xlsx'));self.assertIn('дневного стационара',links[1]['title'])
     def test_verified_empty_rostrud_catalog_is_distinct_from_unreadable_js(self):
         source=next(s for s in monitor.catalog() if s['id']=='rostrud')
         empty={**self.content(),'text':'<h1>Перечень нормативных актов</h1><div class="b-listing-link"><div class="bs"></div></div>'}

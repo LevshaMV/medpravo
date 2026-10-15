@@ -18,7 +18,7 @@ class ScopeTests(unittest.TestCase):
    'Постановление о межевании улицы']
   for title in bad:
    with self.subTest(title=title):self.assertEqual(relevance.evaluate(title,'Медицинские организации, персональные данные, дети, налог, ОМС',{'id':'government'})['relevance'],'other')
- def test_confirmed_tasks_and_general_employer_rules_are_kept(self):
+ def test_confirmed_medical_tasks_are_kept(self):
   good=[
    'Об утверждении тарифного соглашения в сфере ОМС в Калужской области',
    'О порядке оказания медицинской помощи детям',
@@ -30,16 +30,25 @@ class ScopeTests(unittest.TestCase):
    'О безопасности аппаратов Siemens Magnetom Harmony',
    'Об отзыве аппарата Toshiba Aquilion 64',
    'О защите персональных данных пациентов',
-   'Об изменении Трудового кодекса Российской Федерации',
-   'О переносе выходных дней в 2027 году',
-   'О применении контрольно-кассовой техники',
-   'О применении упрощенной системы налогообложения',
+   'О рабочем времени медицинских работников',
+   'Об освобождении медицинских услуг от налогообложения',
    'О профессиональном стандарте врача анестезиолога']
   for title in good:
    with self.subTest(title=title):self.assertEqual(relevance.evaluate(title,'',{'id':'government'})['relevance'],'medical')
+ def test_general_tax_and_employment_are_not_medical(self):
+  for title in ['Об изменении Трудового кодекса Российской Федерации','О переносе выходных дней в 2027 году','О применении упрощенной системы налогообложения','О страховых взносах работодателей','Постановление Конституционного Суда РФ о проверке части восьмой статьи 178 Трудового кодекса Российской Федерации','О применении контрольно-кассовой техники']:
+   with self.subTest(title=title):self.assertEqual(relevance.evaluate(title,'',{'id':'government'})['relevance'],'other')
+ def test_broad_oms_keeps_care_and_payment_but_excludes_fund_office(self):
+  for title in ['О расчете подушевого финансирования медицинских организаций','Об экспертизе качества и санкциях в системе ОМС','О реестрах счетов и оплате медицинской помощи','О численности застрахованных лиц для формирования бюджета ОМС','Дополнительное соглашение № 12']:
+   with self.subTest(title=title):self.assertEqual(relevance.evaluate(title,'',{'id':'tfoms'})['relevance'],'medical')
+  for title in ['О противодействии коррупции в территориальном фонде ОМС','О расходах на содержание фонда','О закупке канцелярских принадлежностей фондом ОМС']:
+   with self.subTest(title=title):self.assertEqual(relevance.evaluate(title,'',{'id':'ffoms'})['relevance'],'other')
  def test_children_alone_are_not_a_medical_topic(self):
   self.assertEqual(relevance.evaluate('Об изменении пособий семьям с детьми','',{'id':'government'})['relevance'],'other')
   self.assertNotIn('Дети',relevance.evaluate('Об изменении пособий семьям с детьми','',{'id':'government'})['topics'])
+ def test_omnibus_oms_amendments_can_be_identified_from_actual_text(self):
+  self.assertEqual(relevance.evaluate('Федеральный закон о внесении изменений в отдельные законодательные акты Российской Федерации','Статья 1. Внести изменения в правила обязательного медицинского страхования и оплаты медицинской помощи.',{'id':'pravo'})['relevance'],'medical')
+  self.assertNotEqual(relevance.evaluate('Федеральный закон о внесении изменений в Налоговый кодекс Российской Федерации','Статья 1. Налогоплательщики представляют декларацию.',{'id':'pravo'})['relevance'],'medical')
  def test_missing_subject_is_separate_not_assumed_medical(self):
   for sid in ('minzdrav','pravo','roszdrav'):
    self.assertEqual(relevance.evaluate('Приказ № 25 от 14.10.2026','',{'id':sid,'medical':sid!='pravo'})['relevance'],'review')

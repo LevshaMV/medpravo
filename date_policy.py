@@ -1,4 +1,6 @@
-"""Publication cutoff; discovery time and effective dates never establish recency."""
+"""Owner's cutoff: publication date, or explicitly labelled act/project date.
+Discovery time, computer clock, effective dates and file timestamps are not evidence.
+"""
 import datetime as dt
 import re
 
@@ -11,7 +13,7 @@ def date(value):
 
 def eligible(value):
     day=date(value)
-    return bool(day and SINCE<=day<=dt.datetime.now(dt.timezone.utc).date().isoformat())
+    return bool(day and SINCE<=day<=dt.datetime.now(dt.timezone(dt.timedelta(hours=3))).date().isoformat())
 
 def prune(connection):
     """Remove old and undated records, including child rows, from current state."""

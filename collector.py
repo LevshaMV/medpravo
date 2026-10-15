@@ -7,14 +7,25 @@ import urllib.parse
 import adapters
 import relevance
 import os
+import hashlib
+
+PARSER_VERSION=3
+def candidate_key(candidate):
+    raw=json.dumps([PARSER_VERSION,relevance.VERSION,candidate['title'],candidate.get('published_at')],ensure_ascii=False)
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 def scan_source(namespace,source):
     m=SimpleNamespace(**namespace)
     with m.connection() as con:
         previous=con.execute('SELECT * FROM sources WHERE id=?',(source['id'],)).fetchone()
         cursor=con.execute('SELECT queue FROM source_cursor WHERE source_id=?',(source['id'],)).fetchone()
-    queue=list(dict.fromkeys(([source['seeds'][0]]+json.loads(cursor[0])+source['seeds'][1:]) if cursor else source['seeds']))
-    queue=[url for url in queue if url not in source.get('obsolete_seeds',[])]
+        seed_cursor=con.execute('SELECT page FROM api_cursor WHERE source_id=?',(source['id'],)).fetchone()
+    # Refresh every configured section before continuing the saved frontier.
+    # An old pagination queue must not starve the other OMS sections.
+    seed_offset=(seed_cursor[0] if seed_cursor and source.get('adapter') not in ('clinrec','projects') else 0)%len(source['seeds'])
+    roots=source['seeds'][seed_offset:]+source['seeds'][:seed_offset]
+    queue=list(dict.fromkeys(roots+(json.loads(cursor[0]) if cursor else [])))
+    queue=[url for url in queue if url not in source.get('obsolete_seeds',[]) and not any(url.startswith(p) for p in source.get('obsolete_prefixes',[]))]
     visited,failures,failed_pages=set(),[],[]
     found_count,pages_read,added,excluded,date_excluded=0,0,0,0,0
     page_limit,doc_limit=source.get('page_limit',6),source.get('document_limit',100)
@@ -30,12 +41,18 @@ def scan_source(namespace,source):
         with m.connection() as con:
             for c in found:
                 if c.get('published_at'):c['published_at']=m.normalized_date(c['published_at'])
+                if not c.get('published_at') and source.get('allow_document_date'):
+                    day=m.document_metadata.document_date(c['title'])
+                    if day:c['published_at']=day;c['date_basis']='Дата самого акта; дата публикации не указана'
                 if namespace.get('PUBLICATION_SINCE'):
                     import date_policy
                     day=date_policy.date(c.get('published_at'))
                     if day and day<date_policy.SINCE:excluded+=1;continue
                 if not m.permitted(c['url'],source):continue
                 if not relevance.should_fetch(c['title'],source):excluded+=1;continue
+                key=hashlib.sha256(m.canonical(c['url']).encode()).hexdigest()
+                outcome=con.execute('SELECT signature,expires FROM document_outcomes WHERE source_id=? AND url_hash=?',(source['id'],key)).fetchone()
+                if outcome and outcome['signature']==candidate_key(c) and outcome['expires']>time.time():continue
                 if con.execute('SELECT 1 FROM publications WHERE url=?',(m.canonical(c['url']),)).fetchone():
                     con.execute('INSERT OR IGNORE INTO publication_sources VALUES (?,?)',(m.canonical(c['url']),source['id']))
                     m.update_publication_title(con,c)
@@ -76,6 +93,9 @@ def scan_source(namespace,source):
                 found,pages=m.discover(result['text'],result['url'],source)
                 if source.get('adapter')=='miac':found=adapters.miac_rows(result['text'],result['url'],m.parse_page)
                 if source.get('adapter')=='ffoms':found=adapters.ffoms_rows(result['text'],result['url'],m.parse_page)
+                if source.get('adapter')=='grls':found,pages=adapters.grls_rows(result['text'],result['url'],m.parse_page)
+                if source.get('adapter')=='duma':found,pages=adapters.duma_rows(result['text'],result['url'],m.parse_page)
+                if source['id']=='pravo' and not found and re.search(r'не найден|не обнаружен',m.parse_page(result['text']).visible,re.I):valid_empty=True
                 if source.get('adapter')=='rostrud' and not found:
                     if re.search(r'class="b-listing-link"',result['text']) and re.search(r'<h1[^>]*>Переч(?:ень|ни)',result['text']):valid_empty=True
                 for candidate in found:candidate.setdefault('source_page',result['url'])
@@ -86,9 +106,10 @@ def scan_source(namespace,source):
                 failed_pages.append(url)
         queue=list(dict.fromkeys(queue+failed_pages))
         limited=bool(queue)
+        with m.connection() as con:con.execute('INSERT OR REPLACE INTO api_cursor VALUES (?,?)',(source['id'],(seed_offset+sum(url in visited for url in roots))%len(roots)))
     with m.connection() as con:
         con.execute('INSERT OR REPLACE INTO source_cursor VALUES (?,?)',(source['id'],json.dumps(queue)))
-        pending=con.execute('SELECT * FROM pending_documents WHERE source_id=? AND next_retry<=? ORDER BY created_at,url LIMIT ?',
+        pending=con.execute('SELECT * FROM pending_documents WHERE source_id=? AND next_retry<=? ORDER BY CASE WHEN published_at IS NULL THEN 1 ELSE 0 END,published_at DESC,created_at,url LIMIT ?',
             (source['id'],time.time(),doc_limit)).fetchall()
     successful=0
     for row in pending:
@@ -104,7 +125,10 @@ def scan_source(namespace,source):
         try:
             result={'type':'metadata','text':row['text']} if row['metadata'] else m.fetch(row['url'],source)
             added+=m.store_publication(source,candidate,result,not previous['initialized'])
-            if result.get('date_rejected'):date_excluded+=1
+            if result.get('date_rejected'):
+                date_excluded+=1
+                with m.connection() as con:
+                    con.execute('INSERT OR REPLACE INTO document_outcomes VALUES (?,?,?,?,?)',(source['id'],hashlib.sha256(m.canonical(row['url']).encode()).hexdigest(),candidate_key(candidate),time.time()+86400,'publication_date'))
             successful+=1
             with m.connection() as con:con.execute('DELETE FROM pending_documents WHERE source_id=? AND url=?',(source['id'],row['url']))
         except Exception as exc:
@@ -126,7 +150,7 @@ def scan_source(namespace,source):
     detail+='Проверены только настроенные разделы. '
     if limited:detail+='Обход продолжится со следующей страницы или очереди документов. '
     if status=='needs_adapter':detail+='Каталог не прочитан: отсутствие новых публикаций не подтверждено. '
-    if valid_empty:detail+='Настроенный каталог Роструда прочитан, список документов в ответе пуст. '
+    if valid_empty:detail+='Настроенный каталог прочитан; по этому запросу документов нет. '
     if failures:detail+='Ошибки: '+'; '.join(failures[:3])
     with m.connection() as con:
         origin=os.environ.get('MEDPRAVO_NETWORK_ORIGIN') or ('GitHub Actions' if os.environ.get('GITHUB_ACTIONS')=='true' else 'Компьютер владельца')

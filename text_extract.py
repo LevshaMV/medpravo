@@ -5,11 +5,13 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
+import shutil
 import zipfile
 import xml.etree.ElementTree as ET
 
 MAX_TEXT=60000
-VERSION=1
+VERSION=2
 
 def extract(raw):
     if len(raw)>20*1024*1024:return {'text':'','status':'oversize'}
@@ -17,8 +19,8 @@ def extract(raw):
         try:
             # Isolate complex PDF parsing; a malformed/decompression-heavy PDF
             # cannot consume the runner's memory or hang the collection worker.
-            env={k:v for k,v in os.environ.items() if k in ('PATH','SYSTEMROOT','WINDIR','TEMP','TMP')}
-            got=subprocess.run([sys.executable,str(Path(__file__).resolve()),'--pdf-worker'],input=raw,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10,env=env)
+            env={k:v for k,v in os.environ.items() if k.upper() in ('PATH','SYSTEMROOT','WINDIR','TEMP','TMP','MEDPRAVO_OCR_ENABLED')}
+            got=subprocess.run([sys.executable,str(Path(__file__).resolve()),'--pdf-worker'],input=raw,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=40 if os.environ.get('MEDPRAVO_OCR_ENABLED')=='1' else 10,env=env)
             if got.returncode!=0:return {'text':'','status':'pdf_error'}
             return json.loads(got.stdout)
         except (subprocess.TimeoutExpired,ValueError,OSError):return {'text':'','status':'pdf_error'}
@@ -40,7 +42,8 @@ def pdf_worker():
         resource.setrlimit(resource.RLIMIT_AS,(512*1024*1024,512*1024*1024))
     except ImportError:pass
     from pypdf import PdfReader
-    reader=PdfReader(io.BytesIO(sys.stdin.buffer.read(20*1024*1024+1)))
+    raw=sys.stdin.buffer.read(20*1024*1024+1)
+    reader=PdfReader(io.BytesIO(raw))
     if reader.is_encrypted and not reader.decrypt(''):
         print(json.dumps({'text':'','status':'encrypted'}));return
     pieces=[];count=0
@@ -49,6 +52,20 @@ def pdf_worker():
         if count>=MAX_TEXT:break
     text='\n'.join(pieces)[:MAX_TEXT]
     meaningful=sum(c.isalpha() for c in text)
-    print(json.dumps({'text':text if meaningful>=30 else '', 'status':'pdf_text' if meaningful>=30 else 'scan_needs_ocr'}))
+    status='pdf_text' if meaningful>=30 else 'scan_needs_ocr'
+    if meaningful<30 and os.environ.get('MEDPRAVO_OCR_ENABLED')=='1' and shutil.which('pdftoppm') and shutil.which('tesseract'):
+        try:
+            with tempfile.TemporaryDirectory(prefix='medpravo-ocr-') as folder:
+                path=Path(folder);(path/'document.pdf').write_bytes(raw)
+                subprocess.run(['pdftoppm','-f','1','-l','2','-scale-to','1800','-gray','-png',str(path/'document.pdf'),str(path/'page')],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=12)
+                pieces=[]
+                for picture in sorted(path.glob('page-*.png'))[:2]:
+                    if picture.stat().st_size>8*1024*1024:continue
+                    got=subprocess.run(['tesseract',str(picture),'stdout','-l','rus+eng'],check=True,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10)
+                    pieces.append(got.stdout.decode('utf-8',errors='replace'))
+                text='\n'.join(pieces)[:MAX_TEXT]
+                if sum(c.isalpha() for c in text)>=30:status='pdf_ocr';meaningful=30
+        except (OSError,subprocess.SubprocessError):pass
+    print(json.dumps({'text':text if meaningful>=30 else '', 'status':status}))
 
 if __name__=='__main__' and sys.argv[1:]==['--pdf-worker']:pdf_worker()

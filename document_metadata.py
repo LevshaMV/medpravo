@@ -78,3 +78,20 @@ def attachments(text,base,source,parse_page,permitted):
         if re.search(r'\.(?:pdf|docx)(?:$)',path,re.I) or source['id']=='pravo' and path=='/file/pdf':
             choices.append(url)
     return list(dict.fromkeys(choices))[:2]
+
+def document_date(title,text=''):
+    """Date of the current act, never its cited predecessor or a file timestamp."""
+    kind=r'(?:дополнительное\s+соглашение|тарифное\s+соглашение|федеральный\s+закон|приказ|постановление|распоряжение|решение|протокол|письмо|соглашение|закон)'
+    for value in (title,' '.join((text or '').split())[:1000]):
+        value=' '.join((value or '').split())
+        header=re.search(r'\b'+kind+r'\b',value,re.I)
+        if not header or header.start()>450:continue
+        if re.search(r'во\s+исполнение|в\s+соответствии|на\s+основании|внесении\s+изменений',value[:header.start()],re.I):continue
+        segment=value[header.start():header.end()+250]
+        match=re.search(r'\bот\s+('+DATE+r')',segment,re.I)
+        if not match:continue
+        prefix=segment[:match.start()]
+        if re.search(r'внесени|изменени|\bк\s+(?:тарифному|соглашению|приказу)|[«"]|\bоб?\s+(?:утверждении|признании|порядке)',prefix,re.I):continue
+        day=normalize(match[1])
+        if day:return day
+    return None

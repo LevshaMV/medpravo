@@ -29,6 +29,11 @@ class MetadataTests(unittest.TestCase):
  def test_conflicting_publication_dates_are_not_guessed(self):
   page='<meta itemprop="datePublished" content="2026-10-02"><time itemprop="datePublished" datetime="2026-10-03">x</time>'
   self.assertIsNone(dates.publication(page,{'id':'minzdrav'},m.parse_page)['date'])
+ def test_act_date_is_distinct_from_dates_of_cited_agreements(self):
+  self.assertEqual(dates.document_date('Дополнительное соглашение от 07.10.2026 № 8 к Тарифному соглашению от 26.12.2025'),'2026-10-07')
+  self.assertIsNone(dates.document_date('Дополнительное соглашение к Тарифному соглашению от 26.12.2025'))
+  self.assertIsNone(dates.document_date('О внесении изменений в приказ от 07.10.2026 № 8'))
+  self.assertIsNone(dates.document_date('document-20261014.pdf'))
  def test_catalogue_dates_stay_with_their_own_document(self):
   source=next(s for s in m.catalog() if s['id']=='pravo')
   page='<div class="documents-items"><a href="/document/0001202610010001">Приказ о помощи детям № 1</a><span>Дата опубликования:</span><span>01.10.2026</span></div><div class="documents-items"><a href="/document/0001202609300001">Приказ о помощи детям № 2</a><span>Дата опубликования:</span><span>30.09.2026</span></div>'
@@ -77,9 +82,23 @@ class StoreExtractionTests(unittest.TestCase):
    row=con.execute('SELECT * FROM publication_content').fetchone()
    self.assertIn('Дата',row['date_basis']);self.assertIn('детям',row['text']);self.assertEqual(row['text_status'],'page_text')
  def test_undated_pdf_does_not_get_a_date_from_its_filename(self):
-  with patch.dict(m.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(text_extract,'extract') as extract:
+  with patch.dict(m.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(text_extract,'extract',return_value={'text':'Приказ без установленной даты','status':'scan_needs_ocr'}) as extract:
    self.assertFalse(m.store_publication(self.source,{**self.candidate,'published_at':None,'url':'https://minzdrav.gov.ru/2026/10/14/act.pdf'},{'type':'binary','raw':b'%PDF'},False))
-   extract.assert_not_called()
+   extract.assert_called_once()
+ def test_owner_allows_confirmed_new_act_date_without_publication_date(self):
+  source={**self.source,'allow_document_date':True}
+  candidate={**self.candidate,'published_at':None,'title':'Приказ о медицинской помощи'}
+  with patch.dict(m.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(text_extract,'extract',return_value={'text':'ПРИКАЗ Министерства здравоохранения от 07.10.2026 № 8 О медицинской помощи','status':'pdf_ocr'}):
+   self.assertTrue(m.store_publication(source,candidate,{'type':'binary','raw':b'%PDF'},False))
+  with m.connection() as con:
+   self.assertEqual(con.execute('SELECT published_at FROM publications').fetchone()[0],'2026-10-07')
+   self.assertIn('Дата самого акта',con.execute('SELECT date_basis FROM publication_content').fetchone()[0])
+ def test_explicit_publication_date_overrides_candidate_act_date(self):
+  candidate={**self.candidate,'published_at':'2026-10-07','date_basis':'Дата самого акта; дата публикации не указана'}
+  page=self.content('<main>Приказ о медицинской помощи. Дата опубликования: 14.10.2026</main>')
+  with patch.dict(m.__dict__,PUBLICATION_SINCE='2026-10-01'):
+   self.assertTrue(m.store_publication(self.source,candidate,page,False))
+  with m.connection() as con:self.assertEqual(con.execute('SELECT published_at FROM publications').fetchone()[0],'2026-10-14')
  def test_conflicting_page_dates_cannot_be_overridden_by_catalogue(self):
   html='<meta itemprop="datePublished" content="2026-10-02"><time itemprop="datePublished" datetime="2026-10-03">x</time>'
   result=self.content(html)
