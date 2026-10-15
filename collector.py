@@ -113,8 +113,11 @@ def scan_source(namespace,source):
         with m.connection() as con:con.execute('INSERT OR REPLACE INTO api_cursor VALUES (?,?)',(source['id'],(seed_offset+sum(url in visited for url in roots))%len(roots)))
     with m.connection() as con:
         con.execute('INSERT OR REPLACE INTO source_cursor VALUES (?,?)',(source['id'],json.dumps(queue)))
-        pending=con.execute('SELECT * FROM pending_documents WHERE source_id=? AND next_retry<=? ORDER BY CASE WHEN published_at IS NULL THEN 1 ELSE 0 END,published_at DESC,created_at,url LIMIT ?',
-            (source['id'],time.time(),doc_limit)).fetchall()
+        pending=con.execute('SELECT * FROM pending_documents WHERE source_id=? AND next_retry<=? ORDER BY CASE WHEN published_at IS NULL THEN 1 ELSE 0 END,published_at DESC,created_at,url',
+            (source['id'],time.time())).fetchall()
+    # Give explicit clinic/OMS subjects priority over generic amendment titles.
+    # Preserve date order inside each group; unclear acts remain in the queue.
+    pending=sorted(pending,key=lambda row:relevance.evaluate(row['title'],'',source)['relevance']!='medical')[:doc_limit]
     successful=0
     for row in pending:
         if time.monotonic()-started>budget:limited=True;break
