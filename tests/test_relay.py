@@ -39,10 +39,45 @@ class RelayTests(unittest.TestCase):
    with patch.object(relay,'open_public',side_effect=AssertionError('Must not connect')):
     opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with self.assertRaises(urllib.error.HTTPError) as err:opener.open('http://127.0.0.1:'+str(server.server_port)+'/')
-    self.assertEqual(err.exception.code,405)
+    self.assertEqual(err.exception.code,403)
     with socket.create_connection(server.server_address,timeout=3) as stream:
      stream.sendall(b'CONNECT evil.example:443 HTTP/1.1\r\nHost: evil.example:443\r\n\r\n')
      self.assertIn(b' 403 ',stream.recv(1024))
   finally:server.shutdown();server.server_close();thread.join(3)
+
+ def test_http_proxy_rejects_credentials_private_hosts_and_other_ports(self):
+  server=relay.make_server(port=0);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+  try:
+   with patch.object(relay,'open_public',side_effect=AssertionError('Must not connect')):
+    for target in ['http://127.0.0.1/','http://pravo.gov.ru:22/','http://owner:secret@pravo.gov.ru/','http://pravo.gov.ru.evil.example/']:
+     with socket.create_connection(server.server_address,timeout=3) as stream:
+      stream.sendall(('GET '+target+' HTTP/1.1\r\nHost: ignored\r\n\r\n').encode())
+      self.assertIn(b' 403 ',stream.recv(1024))
+   transport.RELAY_HTTP.clear()
+   self.assertEqual(set(transport.proxy_protocols('http://127.0.0.1:'+str(server.server_port))),{'http','https'})
+  finally:server.shutdown();server.server_close();thread.join(3)
+
+ def test_http_source_response_is_forwarded_without_cookies_or_authentication(self):
+  seen={}
+  class Page(BaseHTTPRequestHandler):
+   def do_GET(self):
+    seen.update(path=self.path,headers=dict(self.headers))
+    self.send_response(200);self.send_header('Content-Type','text/html');self.end_headers();self.wfile.write(b'official act')
+   def log_message(self,*args):pass
+  upstream=ThreadingHTTPServer(('127.0.0.1',0),Page)
+  proxy=relay.make_server(port=0)
+  threads=[threading.Thread(target=s.serve_forever,daemon=True) for s in (upstream,proxy)]
+  for t in threads:t.start()
+  try:
+   with patch.object(relay,'open_public',side_effect=lambda *a:socket.create_connection(upstream.server_address,timeout=3)) as opened:
+    with socket.create_connection(proxy.server_address,timeout=3) as stream:
+     stream.sendall(b'GET http://www.pravo.gov.ru/?day=15 HTTP/1.1\r\nHost: ignored\r\nAuthorization: secret\r\nCookie: secret\r\nConnection: close\r\n\r\n')
+     parts=[]
+     while block:=stream.recv(4096):parts.append(block)
+    self.assertIn(b'official act',b''.join(parts));opened.assert_called_once_with('www.pravo.gov.ru',80,0)
+   self.assertEqual(seen['path'],'/?day=15');self.assertNotIn('Cookie',seen['headers']);self.assertNotIn('Authorization',seen['headers'])
+  finally:
+   for s in (upstream,proxy):s.shutdown();s.server_close()
+   for t in threads:t.join(3)
 
 if __name__=='__main__':unittest.main()
