@@ -104,28 +104,30 @@ class DigestTests(unittest.TestCase):
         for items in ([one], [one, one]):
             with self.assertRaises(ValueError): d.parse_answer(json.dumps({'items': items}), sources)
 
-    def test_endpoint_token_and_bounded_requests(self):
+    def test_loopback_endpoint_no_credentials_and_bounded_requests(self):
         sources = [d.source_input(publication())]
-        result = {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({'items': [{'id': sources[0]['id'], **inference(sources)[sources[0]['id']]}]})}}]}
+        result = {'done': True, 'done_reason': 'stop', 'message': {'content': json.dumps({'items': [{'id': sources[0]['id'], **inference(sources)[sources[0]['id']]}]})}}
         seen = []
         def opener(request, timeout):
             seen.append(request)
             return io.BytesIO(json.dumps(result).encode())
-        model = d.GitHubModel('private-test-token', opener=opener, sleep=lambda _: None)
+        model = d.LocalModel(opener=opener, sleep=lambda _: None)
         self.assertEqual(model(sources), inference(sources))
         self.assertEqual(seen[0].full_url, d.ENDPOINT)
+        self.assertEqual(seen[0].full_url, 'http://127.0.0.1:11434/api/chat')
+        self.assertIsNone(seen[0].get_header('Authorization'))
         self.assertEqual(json.loads(seen[0].data)['model'], d.MODEL)
         model.calls = d.MAX_CALLS
         with self.assertRaises(d.InferenceError): model(sources)
         self.assertEqual(len(seen), 1)
 
-    def test_auth_error_does_not_disclose_body_or_token(self):
+    def test_runtime_error_does_not_disclose_response_body(self):
         def opener(request, timeout):
             raise urllib.error.HTTPError(request.full_url, 403, 'Forbidden', {}, io.BytesIO(b'private-test-token'))
-        model = d.GitHubModel('private-test-token', opener=opener, sleep=lambda _: None)
+        model = d.LocalModel(opener=opener, sleep=lambda _: None)
         with self.assertRaises(d.InferenceError) as error: model([d.source_input(publication())])
         self.assertNotIn('private-test-token', str(error.exception))
-        self.assertIn('403', str(error.exception))
+        self.assertIn('Qwen', str(error.exception))
 
     def test_corrupt_history_fails_instead_of_resetting_reports(self):
         with tempfile.TemporaryDirectory() as directory:
