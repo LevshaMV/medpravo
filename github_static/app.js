@@ -10,6 +10,7 @@ function message(text,error=false){$("message").innerHTML='<div class="alert '+(
 async function refresh(){try{const next=await api("state");const changed=!current||!next.generated_at||next.generated_at!==current.generated_at;current=next;if(changed)render();}catch(e){message(e.message,true);}}
 function render(){
  if(!current)return;
+ document.querySelector('.main').dataset.currentView=view;
  const enabled=current.sources.filter(s=>current.settings.enabled_sources.includes(s.id));
  const failed=enabled.filter(s=>['blocked','needs_adapter'].includes(s.status));
  let coverage=document.getElementById('coverage-warning');
