@@ -225,6 +225,9 @@ def main():
     path = args.state_dir / 'persist' / 'digests.json'
     data = json.loads((args.site_dir / 'data.json').read_text(encoding='utf-8'))
     history = make_digest(data, load_history(path), datetime.now(MSK), LocalModel())
+    completed_at = datetime.now(MSK).isoformat()
+    target = history.get('last_attempt') or history['reports'][-1]
+    target['generated_at'] = completed_at
     write_json(path, history)
     data['digests'] = history
     data['generated_at'] = datetime.now(timezone.utc).isoformat()
