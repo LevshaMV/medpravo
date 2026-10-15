@@ -53,6 +53,11 @@ async function main(){
  assert.ok(!elements.body.innerHTML.includes('href="javascript:'));
  assert.ok(elements.body.innerHTML.includes('Это проект.'));
  assert.ok(elements.body.innerHTML.includes('value="2026-10-14"'));
+ sandbox.fixture.digests.reports[1].items[0].title='Проект лицензирования за исключением Сколково';
+ sandbox.fixture.digests.reports[1].items[0].analysis.summary='INCORRECT_EXCEPTION_INTERPRETATION';
+ vm.runInContext('renderDigestView(fixture)',sandbox);
+ assert.ok(!elements.body.innerHTML.includes('INCORRECT_EXCEPTION_INTERPRETATION'));
+ assert.ok(elements.body.innerHTML.includes('резюме скрыто'));
  elements['digest-date'].value='2026-10-14';elements['digest-date'].onchange();
  assert.ok(elements.body.innerHTML.includes('Новых публикаций в ленте нет'));
  assert.ok(!elements.body.innerHTML.includes('&lt;img'));
