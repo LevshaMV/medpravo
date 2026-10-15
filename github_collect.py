@@ -15,6 +15,7 @@ import monitor as m
 import downloads
 import relevance as scope
 import date_policy
+import daily_digest
 
 ROOT=Path(__file__).resolve().parent
 MAX_ARCHIVE=60*1024*1024
@@ -132,6 +133,7 @@ def export_site(site,repository='',archive=True,persist=None,archive_budget=90):
           'sources':sources,'settings':state['settings'],'topics':state['topics'],'publications':pubs,
           'archive':archive_report,'schedule':{'enabled':True,'interval_hours':6},'scanning':False,'local_test':False}
     data['profile']=scope.PROFILE
+    data['digests']=daily_digest.load_history(persist/'digests.json') if persist else {'schema':1,'reports':[]}
     write_json(site/'data.json',data)
     write_json(site/'source-check.json',{'checked_at':data['last_checked_at'],'sources':sources,'archive':archive_report})
     return data
