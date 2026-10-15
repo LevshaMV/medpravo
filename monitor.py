@@ -251,6 +251,7 @@ def initialize():
           content_type TEXT,charset TEXT,final_url TEXT,fetched REAL);
         CREATE INDEX IF NOT EXISTS cache_fetched ON http_cache(fetched);
         CREATE TABLE IF NOT EXISTS source_cursor (source_id TEXT PRIMARY KEY,queue TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS source_readers(source_id TEXT,url TEXT,checked_at TEXT,text TEXT,links TEXT,PRIMARY KEY(source_id,url));
         CREATE TABLE IF NOT EXISTS api_cursor (source_id TEXT PRIMARY KEY,page INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS document_outcomes(source_id TEXT,url_hash TEXT,signature TEXT,expires REAL,reason TEXT,PRIMARY KEY(source_id,url_hash));
         CREATE TABLE IF NOT EXISTS pending_documents (source_id TEXT,url TEXT,title TEXT,published_at TEXT,
