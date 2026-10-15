@@ -4,10 +4,15 @@ on:
     branches: [main]
   schedule:
     - cron: '17 */6 * * *'
+    - cron: '0 15 * * *'
   workflow_dispatch:
     inputs:
       publish_only:
         description: 'Только переопубликовать сохранённую ленту (без сбора)'
+        type: boolean
+        default: false
+      make_digest:
+        description: 'Сформировать ИИ-сводку (до 18:00 — предварительную)'
         type: boolean
         default: false
 
@@ -19,6 +24,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  models: read
 
 jobs:
   collect:
@@ -32,7 +38,7 @@ jobs:
       - name: Подготовить чтение PDF
         run: python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements.txt
       - name: Подготовить распознавание сканов
-        if: ${{ inputs.publish_only != true }}
+        if: ${{ inputs.publish_only != true && github.event.schedule != '0 15 * * *' }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-rus tesseract-ocr-eng
@@ -46,7 +52,7 @@ jobs:
         run: python github_state.py restore
       - name: Подключить российское соединение, если настроено
         id: relay
-        if: ${{ vars.MEDPRAVO_RELAY_HOST != '' && inputs.publish_only != true }}
+        if: ${{ vars.MEDPRAVO_RELAY_HOST != '' && inputs.publish_only != true && github.event.schedule != '0 15 * * *' }}
         env:
           RELAY_HOST: ${{ vars.MEDPRAVO_RELAY_HOST }}
           RELAY_PRIVATE_KEY: ${{ secrets.MEDPRAVO_RELAY_KEY }}
@@ -57,7 +63,7 @@ jobs:
           FETCH_TIMEOUT: '12'
           MEDPRAVO_OCR_ENABLED: '1'
           MEDPRAVO_WORKERS: '3'
-          EXPORT_ONLY: ${{ inputs.publish_only }}
+          EXPORT_ONLY: ${{ inputs.publish_only == true || github.event.schedule == '0 15 * * *' }}
           MEDPRAVO_HTTPS_PROXY: ${{ steps.relay.outputs.proxy_url }}
           MEDPRAVO_NETWORK_ORIGIN: ${{ steps.relay.outputs.proxy_url != '' && 'GitHub Actions через российский SSH-релей' || 'GitHub Actions' }}
         run: |
@@ -66,6 +72,11 @@ jobs:
           else
             python github_collect.py
           fi
+      - name: Подготовить ежедневную ИИ-сводку
+        if: ${{ github.event.schedule == '0 15 * * *' || inputs.make_digest == true }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python daily_digest.py
       - name: Сохранить историю для следующего запуска
         run: python github_state.py save
       - name: Подготовить сайт к публикации
@@ -74,7 +85,7 @@ jobs:
           path: site
           retention-days: 1
       - name: Закрыть временное российское соединение
-        if: ${{ always() && vars.MEDPRAVO_RELAY_HOST != '' && inputs.publish_only != true }}
+        if: ${{ always() && vars.MEDPRAVO_RELAY_HOST != '' && inputs.publish_only != true && github.event.schedule != '0 15 * * *' }}
         run: python github_relay.py stop
   publish:
     needs: collect
