@@ -56,6 +56,14 @@ class CollectorTests(unittest.TestCase):
             result=monitor.scan_source(source)
         self.assertEqual(result['added'],1)
         self.assertEqual(monitor.list_publications({})['publications'][0]['published_at'],'2026-10-14')
+    def test_explicit_medical_act_is_not_starved_by_later_generic_titles(self):
+        source={**self.source,'page_limit':1,'document_limit':1,'allow_document_date':True}
+        listing=self.content('<a href="/documents/unclear">Приказ от 14.10.2026 № 88</a><a href="/documents/medical">Приказ от 01.10.2026 № 8 о медицинской помощи детям</a>')
+        with patch.dict(monitor.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(monitor,'fetch',side_effect=[listing,self.content()]) as fetch:
+            result=monitor.scan_source(source)
+        self.assertEqual(result['added'],1)
+        self.assertTrue(fetch.call_args_list[-1].args[0].endswith('/medical'))
+        self.assertEqual(result['pending'],1)
     def test_retry_of_older_act_page_survives_until_its_publication_is_checked(self):
         import date_policy
         source={**self.source,'page_limit':1,'allow_document_date':True}
