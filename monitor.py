@@ -385,6 +385,9 @@ def store_publication(source, candidate, result, initial):
         title=titles.detail_title(title,result['text'],parse_page)
     relevance, topics, category = classify(title, text, source)
     published = normalized_date(candidate.get("published_at") or (timestamps[0] if timestamps else None))
+    if globals().get('PUBLICATION_SINCE'):
+        import date_policy
+        if not date_policy.eligible(published):return False
     with connection() as con:
         cursor = con.execute("INSERT OR IGNORE INTO publications VALUES (?,?,?,?,?,?,?,?,?,0)",
             (url,title,source["id"],published,now(),int(initial),relevance,json.dumps(topics,ensure_ascii=False),category))

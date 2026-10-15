@@ -14,6 +14,7 @@ import urllib.parse
 import monitor as m
 import downloads
 import relevance as scope
+import date_policy
 
 ROOT=Path(__file__).resolve().parent
 MAX_ARCHIVE=60*1024*1024
@@ -44,6 +45,7 @@ def seed_history(path):
                     con.execute('INSERT OR IGNORE INTO publication_sources VALUES (?,?)',(p['url'],sid))
 
 def publications():
+    date_policy.prune(m.connection)
     result=[]
     with m.connection() as con:
         rows=con.execute('SELECT p.*,l.original_title,(SELECT source_page FROM publication_locations x WHERE x.url=p.url AND x.source_id=p.source_id) source_page FROM publications p LEFT JOIN publication_labels l USING(url) ORDER BY COALESCE(p.published_at,substr(p.first_seen,1,10)) DESC,p.first_seen DESC,p.url').fetchall()
@@ -155,6 +157,7 @@ def restore_state(persist,data):
     return True
 
 def main():
+    m.PUBLICATION_SINCE=date_policy.SINCE
     parser=argparse.ArgumentParser()
     parser.add_argument('--state-dir',type=Path,default=Path('.state'))
     parser.add_argument('--site-dir',type=Path,default=Path('site'))

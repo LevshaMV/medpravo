@@ -29,6 +29,10 @@ def scan_source(namespace,source):
         found_count+=len(found)
         with m.connection() as con:
             for c in found:
+                if namespace.get('PUBLICATION_SINCE'):
+                    import date_policy
+                    day=date_policy.date(c.get('published_at'))
+                    if day and day<date_policy.SINCE:excluded+=1;continue
                 if not m.permitted(c['url'],source):continue
                 if not relevance.should_fetch(c['title'],source):excluded+=1;continue
                 if con.execute('SELECT 1 FROM publications WHERE url=?',(m.canonical(c['url']),)).fetchone():
