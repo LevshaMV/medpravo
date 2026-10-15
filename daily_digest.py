@@ -224,7 +224,8 @@ def main():
     args = parser.parse_args()
     path = args.state_dir / 'persist' / 'digests.json'
     data = json.loads((args.site_dir / 'data.json').read_text(encoding='utf-8'))
-    history = make_digest(data, load_history(path), datetime.now(MSK), LocalModel())
+    model = LocalModel()
+    history = make_digest(data, load_history(path), datetime.now(MSK), model)
     completed_at = datetime.now(MSK).isoformat()
     target = history.get('last_attempt') or history['reports'][-1]
     target['generated_at'] = completed_at
@@ -232,8 +233,8 @@ def main():
     data['digests'] = history
     data['generated_at'] = datetime.now(timezone.utc).isoformat()
     write_json(args.site_dir / 'data.json', data)
-    report = history['reports'][-1]
-    print(json.dumps({k: report[k] for k in ('date', 'status', 'total', 'analyzed', 'provisional')}, ensure_ascii=False))
+    report = target
+    print(json.dumps({**{k: report[k] for k in ('date', 'status', 'total', 'analyzed', 'provisional')}, 'inference_calls': model.calls}, ensure_ascii=False))
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary:
         with open(summary, 'a', encoding='utf-8') as out:
