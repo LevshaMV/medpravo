@@ -8,6 +8,7 @@ import subprocess
 import github_collect as collect
 
 BRANCH='medpravo-state'
+STATE_FILES=('state.sqlite.gz','files.json','digests.json')
 
 def git(*args,input=None,env=None):
     result=subprocess.run(['git',*args],input=input,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env,check=True)
@@ -22,7 +23,7 @@ def restore(folder):
     git('fetch','--depth=1','origin','refs/heads/'+BRANCH)
     paths=git('ls-tree','-r','--name-only',sha).decode().splitlines()
     for name in paths:
-        if name not in ('state.sqlite.gz','files.json') and not collect.FILE_PATH.fullmatch(name):raise ValueError('Unexpected file in state branch')
+        if name not in STATE_FILES and not collect.FILE_PATH.fullmatch(name):raise ValueError('Unexpected file in state branch')
         raw=git('show',sha+':'+name)
         if len(raw)>20*1024*1024:raise ValueError('State blob too large')
         path=folder/'persist'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
@@ -39,7 +40,7 @@ def save(folder):
     for path in sorted(root.rglob('*')):
         if not path.is_file():continue
         name=path.relative_to(root).as_posix()
-        if name not in ('state.sqlite.gz','files.json') and not collect.FILE_PATH.fullmatch(name):raise ValueError('Refusing to publish unexpected file')
+        if name not in STATE_FILES and not collect.FILE_PATH.fullmatch(name):raise ValueError('Refusing to publish unexpected file')
         if path.stat().st_size>20*1024*1024:raise ValueError('Blob too large')
         sha=git('hash-object','-w','--',str(path)).decode().strip()
         git('update-index','--add','--cacheinfo','100644,'+sha+','+name,env=env);count+=1
