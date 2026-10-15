@@ -136,7 +136,10 @@ class GitHubModel:
             except (urllib.error.URLError, TimeoutError, OSError):
                 if attempt == 0: continue
                 raise InferenceError('Не удалось связаться с GitHub Models. Предыдущие сводки сохранены.') from None
-            except (ValueError, KeyError, IndexError, TypeError):
+            except (ValueError, KeyError, IndexError, TypeError) as exc:
+                if os.environ.get('MEDPRAVO_AI_DEBUG') == '1':
+                    print(json.dumps({'inference_validation': str(exc)[:180], 'response_bytes': len(raw) if 'raw' in locals() else None,
+                                      'response_preview': raw[:240].decode('utf-8', errors='replace') if 'raw' in locals() else None}, ensure_ascii=True))
                 if attempt == 0: continue
                 raise InferenceError('Ответ ИИ не прошёл проверку цитат и структуры. Непроверенный текст не опубликован.') from None
 
