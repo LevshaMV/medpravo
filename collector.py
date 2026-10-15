@@ -9,7 +9,7 @@ import relevance
 import os
 import hashlib
 
-PARSER_VERSION=3
+PARSER_VERSION=4
 def candidate_key(candidate):
     raw=json.dumps([PARSER_VERSION,relevance.VERSION,candidate['title'],candidate.get('published_at')],ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()

@@ -34,6 +34,11 @@ class MetadataTests(unittest.TestCase):
   self.assertIsNone(dates.document_date('Дополнительное соглашение к Тарифному соглашению от 26.12.2025'))
   self.assertIsNone(dates.document_date('О внесении изменений в приказ от 07.10.2026 № 8'))
   self.assertIsNone(dates.document_date('document-20261014.pdf'))
+ def test_signed_act_header_without_ot_and_not_an_effective_date(self):
+  self.assertEqual(dates.document_date('', 'МИНИСТЕРСТВО ЗДРАВООХРАНЕНИЯ ПРИКАЗ 07.10.2026 № 8 Об оказании медицинской помощи'),'2026-10-07')
+  self.assertEqual(dates.document_date('', 'ПРИКАЗ Министерства здравоохранения Российской Федерации 7 октября 2026 № 8 Об оказании помощи'),'2026-10-07')
+  self.assertIsNone(dates.document_date('Приказ о медицинской помощи с 07.10.2026'))
+  self.assertIsNone(dates.document_date('Дополнительное соглашение к Тарифному соглашению 07.10.2026'))
  def test_catalogue_dates_stay_with_their_own_document(self):
   source=next(s for s in m.catalog() if s['id']=='pravo')
   page='<div class="documents-items"><a href="/document/0001202610010001">Приказ о помощи детям № 1</a><span>Дата опубликования:</span><span>01.10.2026</span></div><div class="documents-items"><a href="/document/0001202609300001">Приказ о помощи детям № 2</a><span>Дата опубликования:</span><span>30.09.2026</span></div>'

@@ -89,6 +89,13 @@ def document_date(title,text=''):
         if re.search(r'во\s+исполнение|в\s+соответствии|на\s+основании|внесении\s+изменений',value[:header.start()],re.I):continue
         segment=value[header.start():header.end()+250]
         match=re.search(r'\bот\s+('+DATE+r')',segment,re.I)
+        if not match:
+            # A signed PDF often has "ПРИКАЗ 07.10.2026 № 8", without "от".
+            # Accept only its compact header, before the subject or act number.
+            match=re.search(r'('+DATE+r')',segment,re.I)
+            if match:
+                bare_prefix=segment[header.end()-header.start():match.start()]
+                if len(bare_prefix)>160 or re.search(r'№|[«"]|\b(?:об?|в|к|с|на|срок|действует|вступает)\b',bare_prefix,re.I):match=None
         if not match:continue
         prefix=segment[:match.start()]
         if re.search(r'внесени|изменени|\bк\s+(?:тарифному|соглашению|приказу)|[«"]|\bоб?\s+(?:утверждении|признании|порядке)',prefix,re.I):continue
