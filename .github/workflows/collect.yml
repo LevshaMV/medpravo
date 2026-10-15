@@ -24,7 +24,6 @@ permissions:
   contents: write
   pages: write
   id-token: write
-  models: read
 
 jobs:
   collect:
@@ -72,11 +71,40 @@ jobs:
           else
             python github_collect.py
           fi
-      - name: Подготовить ежедневную ИИ-сводку
+      - name: Восстановить открытую модель Qwen из кэша
+        if: ${{ github.event.schedule == '0 15 * * *' || inputs.make_digest == true }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .model-cache
+          key: qwen3-4b-359d7dd4bcda-v1
+      - name: Запустить открытую модель на GitHub
         if: ${{ github.event.schedule == '0 15 * * *' || inputs.make_digest == true }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MEDPRAVO_AI_DEBUG: '1'
+          OLLAMA_HOST: 127.0.0.1:11434
+          OLLAMA_MODELS: ${{ github.workspace }}/.model-cache
+          OLLAMA_NO_CLOUD: '1'
+          OLLAMA_NUM_PARALLEL: '1'
+        run: |
+          mkdir -p "$RUNNER_TEMP/medpravo-ollama"
+          curl --fail --location --retry 3 --silent --show-error https://github.com/ollama/ollama/releases/download/v0.40.4/ollama-linux-amd64.tar.zst -o "$RUNNER_TEMP/ollama.tar.zst"
+          printf '%s  %s\n' '15f31e9576d15a481e099b4145dba6e9f8c1f295927d6b8895300ae30ed3740a' "$RUNNER_TEMP/ollama.tar.zst" | sha256sum -c -
+          tar --zstd -xf "$RUNNER_TEMP/ollama.tar.zst" -C "$RUNNER_TEMP/medpravo-ollama"
+          rm "$RUNNER_TEMP/ollama.tar.zst"
+          "$RUNNER_TEMP/medpravo-ollama/bin/ollama" serve > "$RUNNER_TEMP/medpravo-ollama.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:11434/api/tags > /dev/null; then break; fi
+            sleep 1
+          done
+          "$RUNNER_TEMP/medpravo-ollama/bin/ollama" pull qwen3:4b
+          python - <<'PY'
+          import json, urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:11434/api/tags') as response:
+              models = json.load(response)['models']
+          expected = '359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7'
+          assert any(m['name'] == 'qwen3:4b' and m['digest'] == expected for m in models), 'Unexpected model version'
+          PY
+      - name: Подготовить ежедневную ИИ-сводку
+        if: ${{ github.event.schedule == '0 15 * * *' || inputs.make_digest == true }}
         run: python daily_digest.py
       - name: Сохранить историю для следующего запуска
         run: python github_state.py save
