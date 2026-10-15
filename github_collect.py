@@ -16,6 +16,7 @@ import downloads
 import relevance as scope
 import date_policy
 import daily_digest
+import source_reader
 
 ROOT=Path(__file__).resolve().parent
 MAX_ARCHIVE=60*1024*1024
@@ -127,6 +128,10 @@ def export_site(site,repository='',archive=True,persist=None,archive_budget=90):
     sources=[]
     for s in state['sources']:
         sources.append({k:s.get(k) for k in ('id','name','group','description','seeds','homepage','status','detail','checked_at','last_success','enabled','transport_note','network_origin')})
+    for s in sources:
+        if not s['homepage']:
+            value=urllib.parse.urlsplit(s['seeds'][0]);s['homepage']=urllib.parse.urlunsplit((value.scheme,value.netloc,'/','',''))
+    source_reader.export(site,sources,pubs,m.connection)
     # Not checked in GitHub yet must stay pending even when the seed contains publications.
     data={'schema':1,'generated_at':m.now(),'last_checked_at':last[0] if last else None,
           'repository':repository,'workflow_url':'https://github.com/'+repository+'/actions/workflows/collect.yml' if re.fullmatch(r'[\w.-]+/[\w.-]+',repository) else None,
