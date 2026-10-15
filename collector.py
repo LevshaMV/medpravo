@@ -47,7 +47,11 @@ def scan_source(namespace,source):
                 if namespace.get('PUBLICATION_SINCE'):
                     import date_policy
                     day=date_policy.date(c.get('published_at'))
-                    if day and day<date_policy.SINCE:excluded+=1;continue
+                    # An older signing date may precede a new publication.
+                    # Read its detail page before deciding; direct old files
+                    # have no separate publication field to establish there.
+                    old_act_page=(c.get('date_basis') or '').startswith('Дата самого акта') and not re.search(r'\.(?:pdf|docx?|xlsx?|rtf|zip|rar|7z)$',urllib.parse.urlsplit(c['url']).path,re.I)
+                    if day and day<date_policy.SINCE and not old_act_page:excluded+=1;continue
                 if not m.permitted(c['url'],source):continue
                 if not relevance.should_fetch(c['title'],source):excluded+=1;continue
                 key=hashlib.sha256(m.canonical(c['url']).encode()).hexdigest()

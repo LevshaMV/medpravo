@@ -229,8 +229,10 @@
     "group": "Надзор и безопасность",
     "description": "СанПиН, КТ и рентген, дозиметрия, инфекционная безопасность, отходы.",
     "seeds": [
+        "https://rospotrebnadzor.ru/documents/documents.php",
       "https://rospotrebnadzor.ru/"
     ],
+      "homepage": "https://rospotrebnadzor.ru/",
     "allowed_domains": [
       "rospotrebnadzor.ru"
     ],

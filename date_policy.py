@@ -25,7 +25,7 @@ def prune(connection):
             con.execute('DELETE FROM publications WHERE url=?',(url,))
         # An explicitly dated old candidate needs no download; unknown candidates
         # may still acquire a trustworthy date from their individual source page.
-        for row in con.execute('SELECT source_id,url,published_at FROM pending_documents').fetchall():
+        for row in con.execute('SELECT source_id,url,published_at,date_basis FROM pending_documents').fetchall():
             day=date(row['published_at'])
-            if day and day<SINCE:con.execute('DELETE FROM pending_documents WHERE source_id=? AND url=?',(row['source_id'],row['url']))
+            if day and day<SINCE and not (row['date_basis'] or '').startswith('Дата самого акта'):con.execute('DELETE FROM pending_documents WHERE source_id=? AND url=?',(row['source_id'],row['url']))
     return len(removed)

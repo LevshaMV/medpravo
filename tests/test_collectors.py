@@ -48,6 +48,22 @@ class CollectorTests(unittest.TestCase):
         with patch.dict(monitor.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(monitor,'fetch',side_effect=[listing,self.content('')]):monitor.scan_source(source)
         with patch.dict(monitor.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(monitor,'fetch',return_value=listing) as fetch:result=monitor.scan_source(source)
         self.assertEqual(fetch.call_count,1);self.assertEqual(result['pending'],0)
+    def test_new_publication_of_an_older_signed_act_is_not_skipped(self):
+        source={**self.source,'page_limit':1,'allow_document_date':True}
+        listing=self.content('<a href="/documents/test">Приказ от 01.09.2026 № 8 о медицинской помощи детям</a>')
+        detail=self.content('Дата опубликования: 14.10.2026 Медицинская помощь детям')
+        with patch.dict(monitor.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(monitor,'fetch',side_effect=[listing,detail]):
+            result=monitor.scan_source(source)
+        self.assertEqual(result['added'],1)
+        self.assertEqual(monitor.list_publications({})['publications'][0]['published_at'],'2026-10-14')
+    def test_retry_of_older_act_page_survives_until_its_publication_is_checked(self):
+        import date_policy
+        source={**self.source,'page_limit':1,'allow_document_date':True}
+        listing=self.content('<a href="/documents/test">Приказ от 01.09.2026 № 8 о медицинской помощи детям</a>')
+        with patch.dict(monitor.__dict__,PUBLICATION_SINCE='2026-10-01'),patch.object(monitor,'fetch',side_effect=[listing,OSError('temporary')]):
+            monitor.scan_source(source)
+        date_policy.prune(monitor.connection)
+        with monitor.connection() as con:self.assertEqual(con.execute('SELECT count(*) FROM pending_documents').fetchone()[0],1)
     def test_grls_news_date_is_not_the_registration_certificate_date(self):
         page='<div class="info-panel__data"><div class="info-panel__date-time">14 окт 2026<p>15:30</p></div><div class="info-panel__topic">Приказ об анестетике. РУ от 27.04.2024</div><a href="ForumTopic.aspx?idTopic=123">подробнее</a></div>'
         found,_=adapters.grls_rows(page,'https://grls.rosminzdrav.ru/',monitor.parse_page)
