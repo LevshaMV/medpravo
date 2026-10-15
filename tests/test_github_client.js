@@ -36,6 +36,15 @@ async function main(){
  assert.equal(project.url,projectURL);assert.equal(project.open_url,'https://regulation.gov.ru/projects/171878/');
  assert.equal(project.source_page,project.open_url);
  assert.equal(projects.sources.find(s=>s.id==='regulation').homepage,'https://regulation.gov.ru/');
+ data.publications[0].reader_path='readers/documents/'+'a'.repeat(64)+'.html';
+ data.publications[1].reader_path='../../secret.html';
+ data.sources[0].reader_path='readers/sources/tfoms.html';
+ data.sources[1].reader_path='https://evil.example/';
+ const readers=await client('state');
+ assert.equal(readers.publications[0].reader_path,data.publications[0].reader_path);
+ assert.equal(readers.publications[1].reader_path,null);
+ assert.equal(readers.sources[0].reader_path,'readers/sources/tfoms.html');
+ assert.equal(readers.sources[1].reader_path,null);
  await client('review',{url:projectURL,reviewed:true});
  assert.ok((await client('publications?source=regulation')).publications[0].reviewed);
  // Model output is untrusted: exercise the real digest renderer without a browser or network.
