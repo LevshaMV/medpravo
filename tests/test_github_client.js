@@ -38,6 +38,24 @@ async function main(){
  assert.equal(projects.sources.find(s=>s.id==='regulation').homepage,'https://regulation.gov.ru/');
  await client('review',{url:projectURL,reviewed:true});
  assert.ok((await client('publications?source=regulation')).publications[0].reviewed);
- console.log('GitHub client checks passed: filtering, paging, read flags, relative paths, unsafe links, storage failure');
+ // Model output is untrusted: exercise the real digest renderer without a browser or network.
+ const vm=require('node:vm'),fs=require('node:fs'),filePath=require('node:path');
+ const elements={body:{innerHTML:''},'digest-date':{value:'',onchange:null}};
+ const sandbox=vm.createContext({URL,Intl,Date,location:{hash:'#digests'},document:{getElementById:id=>elements[id]}});
+ vm.runInContext(fs.readFileSync(filePath.join(__dirname,'../github_static/app.js'),'utf8').split('const api=')[0],sandbox);
+ vm.runInContext(fs.readFileSync(filePath.join(__dirname,'../github_static/digest.js'),'utf8'),sandbox);
+ const digestReport={date:'2026-10-15',generated_at:'2026-10-15T15:05:00Z',scheduled_for:'2026-10-15T18:00:00+03:00',period_start:'2026-10-14T18:00:00+03:00',period_end:'2026-10-15T18:00:00+03:00',status:'complete',total:1,analyzed:1,source_issues:[],items:[{url:'javascript:alert(1)',title:'Проект',category:'Проект',topics:['ОМС'],analysis:{summary:'<img src=x onerror=alert(1)>',why:'<script>alert(1)</script>',check:'Сверить оригинал',evidence:'<a href="javascript:alert(1)">Цитата</a>'}}]};
+ sandbox.fixture={digests:{reports:[{...digestReport,date:'2026-10-14',status:'empty',items:[],total:0,analyzed:0},digestReport]}};
+ vm.runInContext('renderDigestView(fixture)',sandbox);
+ assert.ok(elements.body.innerHTML.includes('&lt;img'));
+ assert.ok(!elements.body.innerHTML.includes('<img'));
+ assert.ok(!elements.body.innerHTML.includes('<script>'));
+ assert.ok(!elements.body.innerHTML.includes('href="javascript:'));
+ assert.ok(elements.body.innerHTML.includes('Это проект.'));
+ assert.ok(elements.body.innerHTML.includes('value="2026-10-14"'));
+ elements['digest-date'].value='2026-10-14';elements['digest-date'].onchange();
+ assert.ok(elements.body.innerHTML.includes('Новых публикаций нет'));
+ assert.ok(!elements.body.innerHTML.includes('&lt;img'));
+ console.log('GitHub client checks passed: filtering, paging, read flags, relative paths, unsafe links, storage failure, AI text escaping and report archive');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
