@@ -48,7 +48,7 @@ def publications():
     date_policy.prune(m.connection)
     result=[]
     with m.connection() as con:
-        rows=con.execute('SELECT p.*,l.original_title,(SELECT source_page FROM publication_locations x WHERE x.url=p.url AND x.source_id=p.source_id) source_page FROM publications p LEFT JOIN publication_labels l USING(url) ORDER BY COALESCE(p.published_at,substr(p.first_seen,1,10)) DESC,p.first_seen DESC,p.url').fetchall()
+        rows=con.execute('SELECT p.*,l.original_title,c.text AS extracted_text,c.text_status,c.date_basis,c.date_evidence,c.text_source,(SELECT source_page FROM publication_locations x WHERE x.url=p.url AND x.source_id=p.source_id) source_page FROM publications p LEFT JOIN publication_labels l USING(url) LEFT JOIN publication_content c USING(url) ORDER BY COALESCE(p.published_at,substr(p.first_seen,1,10)) DESC,p.first_seen DESC,p.url').fetchall()
         assoc={}
         for row in con.execute('SELECT url,source_id FROM publication_sources'):assoc.setdefault(row['url'],[]).append(row['source_id'])
     sources={s['id']:s for s in m.catalog()}
@@ -59,13 +59,14 @@ def publications():
         # Export an explicit list of fields; future DB columns cannot leak into Pages.
         item={k:p[k] for k in ('url','title','source_id','published_at','first_seen','initial','relevance','category','original_title')}
         item['topics']=json.loads(p['topics']);item['reviewed']=False
-        evaluation=scope.evaluate(p['title'],'',source)
+        evaluation=scope.evaluate(p['title'],p['extracted_text'] or '',source)
         if p['category']=='Справочная страница':evaluation={'relevance':'other','topics':[],'reason':'Справочная страница, а не отдельный акт'}
         item['relevance']=evaluation['relevance'];item['topics']=evaluation['topics'];item['relevance_reason']=evaluation['reason']
         item['source_ids']=assoc.get(p['url'],[p['source_id']])
         item['source_page']=p['source_page'] if p['source_page'] and m.permitted(p['source_page'],source) else None
         ext=Path(urllib.parse.urlsplit(p['url']).path).suffix.lower()
         item['file_type']=ext[1:] if ext in m.ALLOWED_EXT else None
+        item.update(text_excerpt=(p['extracted_text'] or '')[:6000],text_status=p['text_status'] or 'not_extracted',date_basis=p['date_basis'] or 'Сохранённая дата публикации источника',date_evidence=p['date_evidence'] if p['date_evidence'] and m.permitted(p['date_evidence'],source) else item['source_page'],text_source=p['text_source'] if p['text_source'] and m.permitted(p['text_source'],source) else None)
         result.append(item)
     return result
 

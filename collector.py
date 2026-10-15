@@ -16,7 +16,7 @@ def scan_source(namespace,source):
     queue=list(dict.fromkeys(([source['seeds'][0]]+json.loads(cursor[0])+source['seeds'][1:]) if cursor else source['seeds']))
     queue=[url for url in queue if url not in source.get('obsolete_seeds',[])]
     visited,failures,failed_pages=set(),[],[]
-    found_count,pages_read,added,excluded=0,0,0,0
+    found_count,pages_read,added,excluded,date_excluded=0,0,0,0,0
     page_limit,doc_limit=source.get('page_limit',6),source.get('document_limit',100)
     started=time.monotonic()
     budget=source.get('time_budget',120)
@@ -29,6 +29,7 @@ def scan_source(namespace,source):
         found_count+=len(found)
         with m.connection() as con:
             for c in found:
+                if c.get('published_at'):c['published_at']=m.normalized_date(c['published_at'])
                 if namespace.get('PUBLICATION_SINCE'):
                     import date_policy
                     day=date_policy.date(c.get('published_at'))
@@ -39,9 +40,10 @@ def scan_source(namespace,source):
                     con.execute('INSERT OR IGNORE INTO publication_sources VALUES (?,?)',(m.canonical(c['url']),source['id']))
                     m.update_publication_title(con,c)
                     m.remember_source_page(con,c,source)
-                    continue
-                con.execute('INSERT OR IGNORE INTO pending_documents(source_id,url,title,published_at,metadata,text,created_at,original_title,source_page) VALUES (?,?,?,?,?,?,?,?,?)',
-                    (source['id'],m.canonical(c['url']),c['title'],c.get('published_at'),int(c.get('metadata',False)),c.get('text',''),m.now(),c.get('original_title') or c['title'],c.get('source_page')))
+                    content=con.execute('SELECT extractor_version FROM publication_content WHERE url=?',(m.canonical(c['url']),)).fetchone()
+                    if content and content[0]>=m.text_extract.VERSION:continue
+                con.execute('INSERT INTO pending_documents(source_id,url,title,published_at,metadata,text,created_at,original_title,source_page,date_basis) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id,url) DO UPDATE SET published_at=COALESCE(excluded.published_at,pending_documents.published_at),date_basis=COALESCE(excluded.date_basis,pending_documents.date_basis)',
+                    (source['id'],m.canonical(c['url']),c['title'],c.get('published_at'),int(c.get('metadata',False)),c.get('text',''),m.now(),c.get('original_title') or c['title'],c.get('source_page'),c.get('date_basis')))
     if api_kind:
         with m.connection() as con:
             row=con.execute('SELECT page FROM api_cursor WHERE source_id=?',(source['id'],)).fetchone()
@@ -102,6 +104,7 @@ def scan_source(namespace,source):
         try:
             result={'type':'metadata','text':row['text']} if row['metadata'] else m.fetch(row['url'],source)
             added+=m.store_publication(source,candidate,result,not previous['initialized'])
+            if result.get('date_rejected'):date_excluded+=1
             successful+=1
             with m.connection() as con:con.execute('DELETE FROM pending_documents WHERE source_id=? AND url=?',(source['id'],row['url']))
         except Exception as exc:
@@ -119,6 +122,7 @@ def scan_source(namespace,source):
         status='partial' if failures or limited else ('collected' if retained or valid_empty else 'needs_adapter')
     else:status='partial' if failures or limited else 'collected'
     detail=f'Прочитано страниц: {pages_read}; извлечено ссылок: {found_count}; добавлено: {added}; в очереди: {remaining}; исключено по предмету: {excluded}. '
+    if date_excluded:detail+=f'Не добавлено из-за даты публикации: {date_excluded}. '
     detail+='Проверены только настроенные разделы. '
     if limited:detail+='Обход продолжится со следующей страницы или очереди документов. '
     if status=='needs_adapter':detail+='Каталог не прочитан: отсутствие новых публикаций не подтверждено. '

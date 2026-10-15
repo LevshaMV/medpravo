@@ -18,7 +18,7 @@ def prune(connection):
     with connection() as con:
         removed=[r['url'] for r in con.execute('SELECT url,published_at FROM publications') if not eligible(r['published_at'])]
         for url in removed:
-            for table in ('publication_sources','publication_labels','publication_locations'):
+            for table in ('publication_sources','publication_labels','publication_locations','publication_content'):
                 con.execute('DELETE FROM '+table+' WHERE url=?',(url,))
             con.execute('DELETE FROM publications WHERE url=?',(url,))
         # An explicitly dated old candidate needs no download; unknown candidates

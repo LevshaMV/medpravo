@@ -29,6 +29,8 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
+      - name: Подготовить чтение PDF
+        run: python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements.txt
       - name: Проверка программы
         run: |
           python -m unittest discover -s tests -p 'test_*.py'

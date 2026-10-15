@@ -1,4 +1,4 @@
-"""Independent, non-AI publication monitor. Python 3.12+, standard library only."""
+"""Independent, non-AI publication monitor. Python 3.12+, pinned pypdf for bounded attachment reading."""
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -9,6 +9,8 @@ import transport
 import titles
 import relevance as scope
 import downloads
+import document_metadata
+import text_extract
 import concurrent.futures
 import contextlib
 import datetime as dt
@@ -193,7 +195,8 @@ def discover(text, base, source):
         if is_publication_link(url,title,source):
             links.append({"url":url, "title":" ".join(title.split()) or Path(urllib.parse.urlsplit(url).path).name, "published_at":None})
     for row in links:row['source_page']=canonical(base)
-    return titles.enrich_links(links,text,base,source,parse_page), list(dict.fromkeys(pages))
+    links=titles.enrich_links(links,text,base,source,parse_page)
+    return document_metadata.listing_dates(links,text,base,source,parse_page), list(dict.fromkeys(pages))
 
 def is_publication_link(url,title,source):
     path=urllib.parse.urlsplit(url).path.lower()
@@ -240,6 +243,7 @@ def initialize():
         CREATE TABLE IF NOT EXISTS publication_sources(url TEXT,source_id TEXT,PRIMARY KEY(url,source_id));
         INSERT OR IGNORE INTO publication_sources SELECT url,source_id FROM publications;
         CREATE TABLE IF NOT EXISTS publication_labels(url TEXT PRIMARY KEY,original_title TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS publication_content(url TEXT PRIMARY KEY,text TEXT NOT NULL,text_status TEXT NOT NULL,date_basis TEXT NOT NULL,date_evidence TEXT NOT NULL,text_source TEXT NOT NULL,extractor_version INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS publication_locations(url TEXT,source_id TEXT,source_page TEXT NOT NULL,PRIMARY KEY(url,source_id));
         INSERT OR IGNORE INTO publication_labels SELECT url,title FROM publications;
         CREATE TABLE IF NOT EXISTS title_migrations(version INTEGER PRIMARY KEY);
@@ -257,6 +261,8 @@ def initialize():
             con.execute('ALTER TABLE pending_documents ADD COLUMN original_title TEXT')
         if 'source_page' not in [row[1] for row in con.execute('PRAGMA table_info(pending_documents)')]:
             con.execute('ALTER TABLE pending_documents ADD COLUMN source_page TEXT')
+        if 'date_basis' not in [row[1] for row in con.execute('PRAGMA table_info(pending_documents)')]:
+            con.execute('ALTER TABLE pending_documents ADD COLUMN date_basis TEXT')
         if 'network_origin' not in [row[1] for row in con.execute('PRAGMA table_info(sources)')]:
             con.execute('ALTER TABLE sources ADD COLUMN network_origin TEXT')
         if not con.execute("SELECT 1 FROM settings WHERE id=1").fetchone():
@@ -356,44 +362,61 @@ def classify(title, text, source):
     return relevance, topics, category
 
 def normalized_date(value):
-    if not value:
-        return None
-    try:
-        return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).date().isoformat()
-    except ValueError:
-        try:
-            return email.utils.parsedate_to_datetime(value).date().isoformat()
-        except (ValueError, TypeError, OverflowError):
-            return None
+    return document_metadata.normalize(value)
 
 def store_publication(source, candidate, result, initial):
     url, title = canonical(candidate["url"]), candidate["title"][:1500]
     original_title=candidate.get('original_title') or title
     with connection() as con:
-        if con.execute("SELECT 1 FROM publications WHERE url=?", (url,)).fetchone():
+        existing=con.execute("SELECT 1 FROM publications WHERE url=?", (url,)).fetchone()
+        if existing:
             con.execute('INSERT OR IGNORE INTO publication_sources VALUES (?,?)',(url,source['id']))
             update_publication_title(con,candidate)
             remember_source_page(con,candidate,source)
-            return False
-    text, timestamps = result.get('text','') if result['type']=='metadata' else '', []
+            content=con.execute('SELECT extractor_version FROM publication_content WHERE url=?',(url,)).fetchone()
+            if content and content[0]>=text_extract.VERSION:return False
+    text=''
+    status='metadata_only';text_source=url
+    published=normalized_date(candidate.get('published_at'))
+    date_basis=candidate.get('date_basis') or 'Дата публикации в каталоге / API источника'
+    date_evidence=candidate.get('source_page') or url
     if result["type"] == "text":
-        page = parse_page(result["text"])
         # Navigation and footer text are excluded by PageParser. Relevance is a keyword hint.
         body=re.search(r'<(main|article)\b[^>]*>(.*?)</\1>',result['text'],re.I|re.S)
         text = parse_page(body[2]).visible[:500000] if body else ""
-        timestamps = page.timestamps
         title=titles.detail_title(title,result['text'],parse_page)
-    relevance, topics, category = classify(title, text, source)
-    published = normalized_date(candidate.get("published_at") or (timestamps[0] if timestamps else None))
+        details=document_metadata.publication(result['text'],source,parse_page)
+        if details.get('conflict'):
+            result['date_rejected']=True;return False
+        if details['date']:
+            if published and published!=details['date']:
+                result['date_rejected']=True;return False
+            published=details['date'];date_basis=details['basis'];date_evidence=url
+        status='page_text' if text.strip() else 'metadata_only'
     if globals().get('PUBLICATION_SINCE'):
         import date_policy
-        if not date_policy.eligible(published):return False
+        if not date_policy.eligible(published):result['date_rejected']=True;return False
+    # Only fetch attachments once the publication date has passed the cutoff.
+    if result['type']=='binary':
+        extracted=text_extract.extract(result.get('raw',b''));text=extracted['text'];status=extracted['status']
+    elif result['type']=='text' and published:
+        for attachment in document_metadata.attachments(result['text'],result.get('url',url),source,parse_page,permitted):
+            try:
+                file=fetch(attachment,source)
+                if file['type']!='binary':continue
+                extracted=text_extract.extract(file.get('raw',b''));status=extracted['status'];text_source=attachment
+                if extracted['text']:text=extracted['text']
+                break
+            except (OSError,ValueError):status='attachment_unavailable'
+    relevance, topics, category = classify(title, text, source)
     with connection() as con:
         cursor = con.execute("INSERT OR IGNORE INTO publications VALUES (?,?,?,?,?,?,?,?,?,0)",
             (url,title,source["id"],published,now(),int(initial),relevance,json.dumps(topics,ensure_ascii=False),category))
         con.execute('INSERT OR IGNORE INTO publication_sources VALUES (?,?)',(url,source['id']))
         con.execute('INSERT OR IGNORE INTO publication_labels VALUES (?,?)',(url,original_title))
         remember_source_page(con,candidate,source)
+        con.execute('INSERT OR REPLACE INTO publication_content VALUES (?,?,?,?,?,?,?)',
+            (url,text[:text_extract.MAX_TEXT],status,date_basis,date_evidence,text_source,text_extract.VERSION))
         return bool(cursor.rowcount)
 
 def scan_source(source):
