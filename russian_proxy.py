@@ -5,6 +5,7 @@ It never decrypts source TLS and cannot reach private addresses or other hosts.
 """
 import argparse
 import ipaddress
+import http.client
 import json
 import os
 from pathlib import Path
@@ -66,7 +67,34 @@ class RelayHandler(BaseHTTPRequestHandler):
         finally:
             if remote:remote.close()
             if acquired:self.server.slots.release()
-    def do_GET(self):self.send_error(405,'Only source HTTPS tunnels are supported')
+    def do_GET(self):
+        self.close_connection=True
+        if self.path=='/health':
+            body=b'{"service":"medpravo-relay","http_sources":true}'
+            self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
+        acquired=False;remote=None
+        try:
+            u=urllib.parse.urlsplit(self.path);host=(u.hostname or '').lower().rstrip('.')
+            if u.scheme!='http' or u.username or u.password or u.fragment or u.port not in (None,80) or not any(host==d or host.endswith('.'+d) for d in self.server.domains):
+                self.send_error(403,'Public source HTTP URL required');return
+            acquired=self.server.slots.acquire(blocking=False)
+            if not acquired:self.send_error(503);return
+            remote=http.client.HTTPConnection(host,80,timeout=12)
+            remote._create_connection=lambda address,timeout,source_address=None:open_public(host,80,self.server.interface)
+            headers={key:self.headers[key] for key in ('User-Agent','Accept','Accept-Encoding','If-None-Match','If-Modified-Since') if self.headers.get(key)}
+            headers['Connection']='close'
+            remote.request('GET',urllib.parse.urlunsplit(('','',u.path or '/',u.query,'')),headers=headers)
+            response=remote.getresponse()
+            raw=response.read(MAX_BYTES+1)
+            if len(raw)>MAX_BYTES:self.send_error(502,'Source response too large');return
+            self.send_response(response.status)
+            for key in ('Content-Type','Content-Encoding','ETag','Last-Modified','Location'):
+                if response.getheader(key):self.send_header(key,response.getheader(key))
+            self.send_header('Content-Length',str(len(raw)));self.send_header('Connection','close');self.end_headers();self.wfile.write(raw)
+        except (ValueError,OSError,http.client.HTTPException):self.send_error(502,'Source connection failed')
+        finally:
+            if remote:remote.close()
+            if acquired:self.server.slots.release()
     def log_message(self,*args):pass
 
 def make_server(port=8118,interface=0):
