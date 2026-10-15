@@ -54,7 +54,7 @@ async function main(){
  assert.ok(elements.body.innerHTML.includes('Это проект.'));
  assert.ok(elements.body.innerHTML.includes('value="2026-10-14"'));
  elements['digest-date'].value='2026-10-14';elements['digest-date'].onchange();
- assert.ok(elements.body.innerHTML.includes('Новых публикаций нет'));
+ assert.ok(elements.body.innerHTML.includes('Новых публикаций в ленте нет'));
  assert.ok(!elements.body.innerHTML.includes('&lt;img'));
  console.log('GitHub client checks passed: filtering, paging, read flags, relative paths, unsafe links, storage failure, AI text escaping and report archive');
 }
