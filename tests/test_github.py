@@ -94,18 +94,21 @@ class GitHubTests(unittest.TestCase):
         run('config','user.name','QA');run('config','user.email','qa@example.invalid')
         (repo/'README.md').write_text('qa');run('add','.');run('commit','-m','initial');run('remote','add','origin',str(remote));run('push','origin','HEAD:main')
         folder=repo/'.state';persist=folder/'persist';c.compact_state(persist)
+        digest={'schema':1,'reports':[{'date':'2026-10-15','status':'empty','total':0}]}
+        (persist/'digests.json').write_text(json.dumps(digest),encoding='utf-8')
         try:
             import os
             os.chdir(repo);state.save(folder)
             clone=self.root/'clone';subprocess.run(['git','clone','--branch','main',str(remote),str(clone)],check=True,capture_output=True)
             os.chdir(clone);state.restore(clone/'.state')
+            self.assertEqual(json.loads((clone/'.state/persist/digests.json').read_text(encoding='utf-8')),digest)
             self.assertTrue(c.restore_state(clone/'.state/persist',clone/'.state/data'))
             c.m.DATA=clone/'.state/data';c.m.initialize()
             # Known URL remains one record after another collection process.
             self.assertFalse(c.m.store_publication(self.source,self.doc,{'type':'metadata','text':''},False))
             c.compact_state(clone/'.state/persist');state.save(clone/'.state')
             names=run('ls-tree','-r','--name-only','medpravo-state',cwd=remote).stdout.decode()
-            self.assertEqual(names.strip(),'state.sqlite.gz')
+            self.assertEqual(set(names.splitlines()),{'state.sqlite.gz','digests.json'})
         finally:os.chdir(original)
 
     def test_republish_reuses_files_without_contacting_source(self):
