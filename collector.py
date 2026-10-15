@@ -8,6 +8,7 @@ import adapters
 import relevance
 import os
 import hashlib
+import source_reader
 
 PARSER_VERSION=4
 def candidate_key(candidate):
@@ -77,6 +78,7 @@ def scan_source(namespace,source):
                 result=m.fetch(url,source,payload)
                 parser=adapters.parse_clinrec if source['adapter']=='clinrec' else adapters.parse_projects
                 found,total=parser(result['text'],source)
+                source_reader.remember(m.connection,source,url,result['text'],found,m.now(),m.permitted,m.parse_page)
                 remember(found);pages_read+=1
                 has_more=len(found)==source.get('api_page_size',50) and (total is None or (position+1)*len(found)<total)
                 limited=has_more
@@ -99,6 +101,7 @@ def scan_source(namespace,source):
                 if source.get('adapter')=='ffoms':found=adapters.ffoms_rows(result['text'],result['url'],m.parse_page)
                 if source.get('adapter')=='grls':found,pages=adapters.grls_rows(result['text'],result['url'],m.parse_page)
                 if source.get('adapter')=='duma':found,pages=adapters.duma_rows(result['text'],result['url'],m.parse_page)
+                source_reader.remember(m.connection,source,url,result['text'],found,m.now(),m.permitted,m.parse_page)
                 if source['id']=='pravo' and not found and re.search(r'не найден|не обнаружен',m.parse_page(result['text']).visible,re.I):valid_empty=True
                 if source.get('adapter')=='rostrud' and not found:
                     if re.search(r'class="b-listing-link"',result['text']) and re.search(r'<h1[^>]*>Переч(?:ень|ни)',result['text']):valid_empty=True
