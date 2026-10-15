@@ -20,7 +20,7 @@ function renderDigestView(data){
   $('body').innerHTML='<section class="panel digest-empty"><span class="badge neutral">Каждый день · 18:00 МСК</span><h2>Здесь появится ИИ-сводка за день</h2><p>Коротко о новых публикациях: предмет документа, возможная связь с центром и что сверить в оригинале. ОМС рассматривается в первую очередь. GitHub может запускать задания с задержкой.</p><p class="note">Открытая модель Qwen3 работает на вычислителе GitHub Actions. API-ключи и платные сервисы не нужны.</p></section>';
   return;
  }
- const status={complete:'Сводка готова',empty:'Новых публикаций нет',partial:'Разобрана часть документов',unavailable:'ИИ временно недоступен'}[report.status]||'Проверка результата';
+ const status={complete:'Сводка готова',empty:'Новых публикаций в ленте нет',partial:'Разобрана часть документов',unavailable:'ИИ временно недоступен'}[report.status]||'Проверка результата';
  const items=Array.isArray(report.items)?report.items:[];
  const oms=items.filter(p=>(p.topics||[]).includes('ОМС')).length;
  const projects=items.filter(p=>p.category==='Проект'||p.date_kind==='registration').length;
