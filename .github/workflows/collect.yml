@@ -76,6 +76,7 @@ jobs:
         if: ${{ github.event.schedule == '0 15 * * *' || inputs.make_digest == true }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MEDPRAVO_AI_DEBUG: '1'
         run: python daily_digest.py
       - name: Сохранить историю для следующего запуска
         run: python github_state.py save
