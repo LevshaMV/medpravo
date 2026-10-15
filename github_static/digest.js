@@ -1,0 +1,41 @@
+"use strict";
+let digestDate="";
+function digestTime(value){
+ const at=new Date(value);
+ return value&&!Number.isNaN(at.getTime())?new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(at)+' МСК':'не указано';
+}
+function digestURL(item){
+ try{
+  const url=new URL(item.url);
+  if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return null;
+  const project=item.source_id==='regulation'?/^https:\/\/regulation\.gov\.ru\/api\/npalist\/(\d+)\/?$/.exec(url.href):null;
+  return project?'https://regulation.gov.ru/projects/'+project[1]+'/':url.href;
+ }catch{return null;}
+}
+function renderDigestView(data){
+ const history=data.digests||{reports:[]};
+ const reports=Array.isArray(history.reports)?history.reports:[];
+ const report=reports.find(r=>r.date===digestDate)||reports[reports.length-1];
+ if(!report){
+  $('body').innerHTML='<section class="panel digest-empty"><span class="badge neutral">Каждый день · 18:00 МСК</span><h2>Здесь появится ИИ-сводка за день</h2><p>Коротко о новых публикациях: предмет документа, возможная связь с центром и что сверить в оригинале. ОМС рассматривается в первую очередь. GitHub может запускать задания с задержкой.</p><p class="note">Модель Llama работает через бесплатный лимит GitHub Models. Ключи и запросы не передаются в браузер.</p></section>';
+  return;
+ }
+ const status={complete:'Сводка готова',empty:'Новых публикаций нет',partial:'Разобрана часть документов',unavailable:'ИИ временно недоступен'}[report.status]||'Проверка результата';
+ const items=Array.isArray(report.items)?report.items:[];
+ const oms=items.filter(p=>(p.topics||[]).includes('ОМС')).length;
+ const projects=items.filter(p=>p.category==='Проект'||p.date_kind==='registration').length;
+ const issues=Array.isArray(report.source_issues)?report.source_issues:[];
+ const lastAttempt=history.last_attempt;
+ $('body').innerHTML='<div class="digest-toolbar"><div><span class="badge '+(report.status==='complete'||report.status==='empty'?'teal':'amber')+'">'+escape(status)+'</span>'+(report.provisional?'<span class="badge neutral">Предварительная · до 18:00</span>':'')+'</div><label class="digest-date-label">Дата сводки<select id="digest-date" aria-label="Дата сводки">'+reports.slice().reverse().map(r=>'<option value="'+escape(r.date)+'">'+escape(date(r.date))+'</option>').join('')+'</select></label></div>'+
+ '<section class="panel digest-overview"><h2>'+escape(date(report.date))+'</h2><p class="digest-period">Найдены сборщиком: '+escape(digestTime(report.period_start))+' — '+escape(digestTime(report.period_end))+'</p><div class="digest-counts"><span>Документов <strong>'+Number(report.total||0)+'</strong></span><span>Разобрано ИИ <strong>'+Number(report.analyzed||0)+'</strong></span><span>ОМС <strong>'+oms+'</strong></span><span>Проектов <strong>'+projects+'</strong></span></div><p class="note">'+escape(report.note||'Сверяйте выводы с оригиналами документов.')+'</p><p class="digest-generated">Сводка: '+escape(digestTime(report.generated_at))+' · Данные сбора: '+escape(digestTime(report.collection_checked_at))+(report.model?' · Built with Llama · GitHub Models':' · Без обращения к ИИ')+'</p></section>'+
+ (report.error?'<div class="alert error">'+escape(report.error)+'</div>':'')+
+ (lastAttempt&&lastAttempt.date===report.date?'<div class="alert error">Повторная попытка не завершена. Показана предыдущая готовая сводка. '+escape(lastAttempt.error||'')+'</div>':'')+
+ '<details class="selection-note digest-coverage"><summary><span>Источники отвечают: '+Number(report.responding_sources||0)+' / '+Number(report.enabled_sources||0)+(issues.length?' · есть ограничения сбора':'')+'</span><span class="disclosure-hint">Подробнее</span></summary><div class="notice-content"><p>Обзор относится к найденным публикациям. Отсутствие записи не подтверждает отсутствие изменений во всём законодательстве.</p>'+issues.map(s=>'<p><strong>'+escape(s.name)+'</strong>: '+escape(labels[s.status]||s.status)+'. '+escape(s.detail||'')+'</p>').join('')+'</div></details>'+
+ (items.length?'<section class="panel digest-list">'+items.map(item=>{
+  const analysis=item.analysis,href=digestURL(item);
+  return '<article class="digest-item"><div class="doc-badges"><span class="badge neutral">'+escape(item.category||'Документ')+'</span>'+((item.topics||[]).includes('ОМС')?'<span class="badge teal">ОМС</span>':'')+'<span class="badge neutral">'+(item.basis==='title_only'?'Только название':'По доступному фрагменту')+'</span></div><h3>'+escape(item.title)+'</h3>'+(analysis?'<p class="digest-summary">'+escape(analysis.summary)+'</p><details class="document-details"><summary>Связь с центром, проверка и цитата</summary><div class="document-details-content"><p><strong>Для центра.</strong> '+escape(analysis.why)+'</p><p><strong>Что проверить.</strong> '+escape(analysis.check)+'</p>'+((item.category==='Проект'||item.date_kind==='registration')?'<p>Это проект. Принятие и действующую редакцию нужно проверить отдельно.</p>':'')+'<blockquote>'+escape(analysis.evidence)+'</blockquote><p class="note">Цитата сверена с переданным ИИ названием или фрагментом. Это не проверка полного текста акта.</p></div></details>':'<p class="digest-pending">ИИ-анализ ещё не получен. Документ сохранён для следующей попытки.</p>')+'<div class="button-row">'+(href?'<a class="text-link" href="'+escape(href)+'" target="_blank" rel="noopener noreferrer">'+(item.category==='Проект'?'Открыть проект ↗':'Открыть оригинал ↗')+'</a>':'')+'</div></article>';
+ }).join('')+'</section>':'<div class="digest-empty-day"><p>За этот период в доступной ленте не найдено новых публикаций по темам центра. Проверяйте ограничения источников выше.</p></div>')+
+ '<p class="plain-note digest-footnote">Запуск ежедневно в 18:00 по Москве; возможна задержка GitHub. Сводки хранятся за последние 90 дат. Платный резерв не подключён.</p>';
+ $('digest-date').value=report.date;
+ $('digest-date').onchange=()=>{digestDate=$('digest-date').value;renderDigestView(data);};
+}
