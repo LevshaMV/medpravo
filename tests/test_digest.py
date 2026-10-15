@@ -112,7 +112,8 @@ class DigestTests(unittest.TestCase):
             seen.append(request)
             return io.BytesIO(json.dumps(result).encode())
         model = d.LocalModel(opener=opener, sleep=lambda _: None)
-        self.assertEqual(model(sources), inference(sources))
+        expected={key:{field:value for field,value in item.items() if field in ('summary','evidence')} for key,item in inference(sources).items()}
+        self.assertEqual(model(sources), expected)
         self.assertEqual(seen[0].full_url, d.ENDPOINT)
         self.assertEqual(seen[0].full_url, 'http://127.0.0.1:11434/api/chat')
         self.assertIsNone(seen[0].get_header('Authorization'))
@@ -134,5 +135,24 @@ class DigestTests(unittest.TestCase):
             path = Path(directory) / 'digests.json'
             path.write_text('invalid')
             with self.assertRaises(ValueError): d.load_history(path)
+
+    def test_exception_is_not_paraphrased_as_target_group(self):
+        pub=publication(title='Проект изменения лицензирования медицинской деятельности (за исключением организаций в Сколково)',category='Проект')
+        result=d.make_digest(source_data(pub),history(),self.now,lambda _:self.fail('Exception requires full text review'))['reports'][0]
+        self.assertEqual(result['manual_review_count'],1)
+        self.assertEqual(result['analyzed'],0)
+        self.assertEqual(result['status'],'complete')
+        self.assertIsNone(result['items'][0]['analysis'])
+
+    def test_model_cannot_invent_center_services_or_patient_restrictions(self):
+        def unsafe(sources):
+            result=inference(sources)
+            for item in result.values():
+                item.update(why='Центр оказывает наркологическую помощь',check='Не обслуживать пациентов из Абхазии')
+            return result
+        result=d.make_digest(source_data(publication()),history(),self.now,unsafe)['reports'][0]['items'][0]
+        self.assertEqual(set(result['analysis']),{'summary','evidence'})
+        self.assertNotIn('наркологическую',json.dumps(result,ensure_ascii=False))
+        self.assertNotIn('Не обслуживать',json.dumps(result,ensure_ascii=False))
 
 if __name__ == '__main__': unittest.main()
