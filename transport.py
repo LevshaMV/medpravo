@@ -11,11 +11,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import functools
+import http.client
 import network
 
 HOST_LOCK=threading.Lock()
 HOST_NEXT={}
 CONTEXTS={}
+RELAY_HTTP={}
 MAX_BYTES=20*1024*1024
 CACHE_BYTES=64*1024*1024
 CACHE_AGE=14*86400
@@ -50,6 +52,19 @@ def relay_url(value):
         raise ValueError('Релей допускается только через локальный SSH-туннель')
     return value
 
+
+def proxy_protocols(proxy):
+    """Older installed relays remain compatible until their HTTP upgrade."""
+    with HOST_LOCK:
+        if proxy not in RELAY_HTTP:
+            try:
+                opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                with opener.open(proxy.rstrip('/')+'/health',timeout=2) as response:
+                    data=json.loads(response.read(1024))
+                RELAY_HTTP[proxy]=data.get('service')=='medpravo-relay' and data.get('http_sources') is True
+            except (OSError,ValueError):RELAY_HTTP[proxy]=False
+        return {'http':proxy,'https':proxy} if RELAY_HTTP[proxy] else {'https':proxy}
+
 def trim_cache(con,max_bytes=CACHE_BYTES,at=None):
     at=time.time() if at is None else at
     con.execute('DELETE FROM http_cache WHERE fetched<?',(at-CACHE_AGE,))
@@ -81,7 +96,7 @@ def fetch(url,source,root,connection,permitted,canonical,redirect,payload=None):
     proxy=relay_url(os.environ.get('MEDPRAVO_HTTPS_PROXY',''))
     if proxy:
         # Certificate checks and source redirect restrictions remain active.
-        opener=urllib.request.build_opener(urllib.request.ProxyHandler({'https':proxy}),redirect(source),urllib.request.HTTPSHandler(context=tls))
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler(proxy_protocols(proxy)),redirect(source),urllib.request.HTTPSHandler(context=tls))
     elif interface and os.name=='nt':
         class DirectHTTPSHandler(urllib.request.HTTPSHandler):
             def https_open(self,request):
@@ -108,6 +123,8 @@ def fetch(url,source,root,connection,permitted,canonical,redirect,payload=None):
             if exc.code not in (500,502,503,504) or attempt:raise
         except urllib.error.URLError as exc:
             if isinstance(exc.reason,ssl.SSLCertVerificationError) or attempt:raise
+        except (TimeoutError,ConnectionError,http.client.RemoteDisconnected):
+            if attempt:raise
         if attempt==0:time.sleep(0.5)
     with response:
         raw=response.read(MAX_BYTES+1)
